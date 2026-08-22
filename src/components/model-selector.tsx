@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ModelCard } from "@/components/model-card";
 import type { Model } from "@/lib/models";
+import { PRESETS, resolvePreset } from "@/lib/presets";
 
 export function ModelSelector({
   models,
@@ -36,7 +37,6 @@ export function ModelSelector({
     });
   }, [models, search, labFilter, selectedIds, showOnlySelected]);
 
-  // sort: selected first
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
       const as = selectedIds.has(a.id) ? 0 : 1;
@@ -75,27 +75,46 @@ export function ModelSelector({
     setSelectedIds(new Set(pick.map((m) => m.id)));
   };
 
+  const applyPreset = (presetId: string) => {
+    const preset = PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    const resolved = resolvePreset(preset, models);
+    setSelectedIds(new Set(resolved.map((m) => m.id)));
+  };
+
+  const appendPreset = (presetId: string) => {
+    const preset = PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    const resolved = resolvePreset(preset, models);
+    setSelectedIds((prev) => {
+      const n = new Set(prev);
+      for (const m of resolved) n.add(m.id);
+      return n;
+    });
+  };
+
   return (
     <div className="w-full max-w-[1100px] mx-auto px-4 py-6 flex flex-col gap-4">
       {/* header */}
-      <div className="border-2 border-black bg-white p-4 flex flex-col gap-3">
+      <div className="border border-zinc-800 bg-[#1a1a1a] p-4 flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-[32px] font-black tracking-tighter leading-none">
+            <h1 className="text-[28px] font-black tracking-tighter leading-none text-white">
               MODELS.TIERLIST
             </h1>
-            <p className="text-sm font-mono text-zinc-600 mt-1">
-              Select models → make a tier list — sharp, minimal, no bullshit.
+            <p className="text-xs font-mono text-zinc-400 mt-1">
+              Select models → make a tier list
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <div className="text-xs font-mono border-2 border-black px-2 py-1 bg-zinc-100">
+            <div className="text-xs font-mono border border-zinc-700 px-2 py-1 bg-zinc-900 text-zinc-300">
               {selectedIds.size} SELECTED / {models.length} TOTAL
             </div>
             <button
+              type="button"
               onClick={() => onStart(selectedModels)}
               disabled={selectedIds.size < 2}
-              className="px-6 py-2 bg-black text-white font-black text-sm tracking-widest border-2 border-black disabled:opacity-30 hover:bg-zinc-800 transition-colors"
+              className="px-6 py-2 bg-white text-black font-black text-sm tracking-widest disabled:opacity-30 hover:bg-zinc-200 transition-colors"
             >
               START TIER LIST →
             </button>
@@ -107,19 +126,55 @@ export function ModelSelector({
           </div>
         </div>
 
+        {/* presets */}
+        <div className="flex flex-col gap-2 border-t border-zinc-800 pt-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold tracking-widest text-zinc-300">
+              PRESETS
+            </h2>
+            <span className="text-[10px] font-mono text-zinc-500">
+              click to replace • shift+click to add
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {PRESETS.map((p) => {
+              const count = resolvePreset(p, models).length;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={(e) => {
+                    if (e.shiftKey) appendPreset(p.id);
+                    else applyPreset(p.id);
+                  }}
+                  className="group border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-left hover:bg-white hover:border-white transition-colors"
+                  title={`${p.description} (${count} models) — shift+click to add`}
+                >
+                  <div className="text-xs font-bold tracking-wide leading-none text-white group-hover:text-black">
+                    {p.label}
+                  </div>
+                  <div className="text-[10px] font-mono leading-none mt-0.5 text-zinc-400 group-hover:text-zinc-600">
+                    {count} models
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* controls */}
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 border-t border-zinc-800 pt-3">
           <div className="flex flex-wrap gap-2">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search model, lab, id..."
-              className="flex-1 min-w-[200px] border-2 border-black px-3 py-2 text-sm font-mono outline-none focus:bg-zinc-50"
+              className="flex-1 min-w-[200px] border border-zinc-700 bg-black px-3 py-2 text-sm font-mono outline-none focus:border-zinc-500 text-white placeholder:text-zinc-500"
             />
             <select
               value={labFilter}
               onChange={(e) => setLabFilter(e.target.value)}
-              className="border-2 border-black px-3 py-2 text-sm font-mono bg-white min-w-[140px]"
+              className="border border-zinc-700 bg-black px-3 py-2 text-sm font-mono text-white min-w-[140px]"
             >
               {labs.map((lab) => (
                 <option key={lab} value={lab}>
@@ -131,42 +186,47 @@ export function ModelSelector({
 
           <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
             <button
+              type="button"
               onClick={selectAllFiltered}
-              className="border-2 border-black px-2 py-1 bg-white hover:bg-black hover:text-white transition-colors font-bold"
+              className="border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-200 hover:bg-white hover:text-black transition-colors font-bold"
             >
               SELECT FILTERED ({filtered.length})
             </button>
             <button
+              type="button"
               onClick={clearAll}
-              className="border-2 border-black px-2 py-1 bg-white hover:bg-black hover:text-white transition-colors"
+              className="border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-300 hover:bg-white hover:text-black transition-colors"
             >
               CLEAR
             </button>
-            <span className="text-zinc-400 mx-1">|</span>
+            <span className="text-zinc-600 mx-1">|</span>
             <button
+              type="button"
               onClick={() => quickPick(8)}
-              className="border border-black px-2 py-1 bg-white hover:bg-black hover:text-white transition-colors"
+              className="border border-zinc-800 px-2 py-1 bg-transparent text-zinc-400 hover:bg-white hover:text-black transition-colors"
             >
               RAND 8
             </button>
             <button
+              type="button"
               onClick={() => quickPick(16)}
-              className="border border-black px-2 py-1 bg-white hover:bg-black hover:text-white transition-colors"
+              className="border border-zinc-800 px-2 py-1 bg-transparent text-zinc-400 hover:bg-white hover:text-black transition-colors"
             >
               RAND 16
             </button>
             <button
+              type="button"
               onClick={() => quickPick(24)}
-              className="border border-black px-2 py-1 bg-white hover:bg-black hover:text-white transition-colors"
+              className="border border-zinc-800 px-2 py-1 bg-transparent text-zinc-400 hover:bg-white hover:text-black transition-colors"
             >
               RAND 24
             </button>
-            <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
+            <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none text-zinc-300">
               <input
                 type="checkbox"
                 checked={showOnlySelected}
                 onChange={(e) => setShowOnlySelected(e.target.checked)}
-                className="w-4 h-4 border-2 border-black accent-black"
+                className="w-4 h-4 border border-zinc-700 accent-white bg-black"
               />
               SHOW SELECTED ONLY
             </label>
@@ -175,10 +235,10 @@ export function ModelSelector({
       </div>
 
       {/* grid */}
-      <div className="border-2 border-black bg-white p-2">
-        <div className="flex flex-wrap gap-2 bg-zinc-100 p-2 min-h-[400px] content-start">
+      <div className="border border-zinc-800 bg-[#1a1a1a] p-1">
+        <div className="flex flex-wrap gap-1.5 bg-[#121212] p-2 min-h-[380px] content-start">
           {sorted.length === 0 ? (
-            <div className="w-full py-20 text-center text-sm font-mono text-zinc-400">
+            <div className="w-full py-20 text-center text-sm font-mono text-zinc-500">
               No models match filters.
             </div>
           ) : (
@@ -194,13 +254,13 @@ export function ModelSelector({
             ))
           )}
         </div>
-        <div className="px-2 py-2 flex items-center justify-between border-t-2 border-black mt-2 bg-white text-xs font-mono">
-          <span className="text-zinc-600">
-            {filtered.length} shown · {selectedIds.size} selected · Click card
-            to toggle — logo + name + version visible in tier
+        <div className="px-2 py-2 flex items-center justify-between border-t border-zinc-800 bg-[#1a1a1a] text-xs font-mono">
+          <span className="text-zinc-500">
+            {filtered.length} shown · {selectedIds.size} selected · Click to
+            toggle • Shift+click presets to add
           </span>
-          <span className="hidden sm:inline text-zinc-400">
-            MODELS.DEV · sharp borders · minimal
+          <span className="hidden sm:inline text-zinc-600">
+            MODELS.DEV · minimal
           </span>
         </div>
       </div>

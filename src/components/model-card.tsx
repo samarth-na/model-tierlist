@@ -1,6 +1,42 @@
 "use client";
 
-import { logoUrl, type Model, modelVersion } from "@/lib/models";
+import { useEffect, useState } from "react";
+import {
+  logoUrl,
+  type Model,
+  modelVersion,
+  providerBrandColor,
+} from "@/lib/models";
+
+const svgCache = new Map<string, string>();
+
+function useColoredLogo(providerId: string) {
+  const [svg, setSvg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const brand = providerBrandColor(providerId);
+    const cached = svgCache.get(providerId);
+    if (cached) {
+      setSvg(cached.replaceAll("currentColor", brand));
+      return;
+    }
+    fetch(logoUrl(providerId))
+      .then((r) => (r.ok ? r.text() : Promise.reject()))
+      .then((text) => {
+        svgCache.set(providerId, text);
+        if (!cancelled) setSvg(text.replaceAll("currentColor", brand));
+      })
+      .catch(() => {
+        if (!cancelled) setSvg(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [providerId]);
+
+  return svg;
+}
 
 export function ModelCard({
   model,
@@ -22,10 +58,11 @@ export function ModelCard({
   const version = modelVersion(model);
   const dims =
     size === "small"
-      ? "w-[86px] h-[86px]"
+      ? "w-[72px] h-[72px]"
       : size === "pool"
-        ? "w-[96px] h-[96px]"
-        : "w-[88px] h-[88px]";
+        ? "w-[84px] h-[84px]"
+        : "w-[76px] h-[76px]";
+  const coloredSvg = useColoredLogo(model.providerId);
 
   return (
     <div
@@ -33,36 +70,36 @@ export function ModelCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onClick}
-      className={`${dims} relative flex flex-col items-center justify-between border-2 border-black bg-white p-1.5 select-none cursor-grab active:cursor-grabbing hover:bg-zinc-50 transition-colors shrink-0
-        ${selected ? "bg-black text-white border-black" : ""}
+      className={`${dims} relative flex flex-col items-center justify-between border bg-white p-1.5 select-none cursor-grab active:cursor-grabbing hover:bg-zinc-50 transition-colors shrink-0
+        ${selected ? "ring-2 ring-white ring-offset-2 ring-offset-[#0e0e0e] border-zinc-900" : "border-zinc-200"}
         ${draggable ? "" : "cursor-pointer"}
       `}
       title={`${model.name} (${model.id})`}
     >
-      {/* logo */}
+      {/* colored logo */}
       <div className="flex-1 flex items-center justify-center w-full min-h-0 py-1">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={logoUrl(model.providerId)}
-          alt={model.providerId}
-          className={`w-8 h-8 object-contain pointer-events-none ${selected ? "invert" : ""}`}
-          loading="lazy"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = "none";
-          }}
-        />
+        {coloredSvg ? (
+          <span
+            className="w-7 h-7 flex items-center justify-center [&>svg]:w-7 [&>svg]:h-7 [&>svg]:object-contain pointer-events-none"
+            aria-hidden
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: logos are from trusted models.dev CDN, brand color replaced
+            dangerouslySetInnerHTML={{ __html: coloredSvg }}
+          />
+        ) : (
+          <span
+            className="w-7 h-7 rounded-none flex items-center justify-center text-[10px] font-black text-white pointer-events-none"
+            style={{ background: providerBrandColor(model.providerId) }}
+          >
+            {model.providerId.slice(0, 2).toUpperCase()}
+          </span>
+        )}
       </div>
 
-      {/* name */}
       <div className="w-full text-center leading-none">
-        <div
-          className={`text-[10px] font-bold tracking-tight leading-3 line-clamp-2 break-words ${selected ? "text-white" : "text-black"}`}
-        >
+        <div className="text-[10px] font-bold tracking-tight leading-3 line-clamp-2 break-words text-black">
           {model.name}
         </div>
-        <div
-          className={`text-[8px] font-mono mt-0.5 truncate ${selected ? "text-zinc-300" : "text-zinc-600"}`}
-        >
+        <div className="text-[8px] font-mono mt-0.5 truncate text-zinc-600">
           {version}
         </div>
       </div>

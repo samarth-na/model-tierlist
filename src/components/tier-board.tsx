@@ -45,14 +45,10 @@ export function TierBoard({
   const didLoadRef = useRef(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // keep pool in sync if initialModels changes (new selection)
   useEffect(() => {
     if (!didLoadRef.current) return;
-    // selection changed — reset to new models unless saved matches new key
-    // save effect will overwrite, so just re-init pool/tiers
     const placed = new Set(tiers.flatMap((t) => t.items.map((m) => m.id)));
     const _freshPool = initialModels.filter((m) => !placed.has(m.id));
-    // only reset if initialModels key differs from current pool+tiers union
     const currentIds = new Set(
       [...pool, ...tiers.flatMap((t) => t.items)].map((m) => m.id),
     );
@@ -66,7 +62,6 @@ export function TierBoard({
     }
   }, [initialModels, pool, tiers.flatMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // restore from localStorage
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -86,7 +81,6 @@ export function TierBoard({
             items: mapIds(t.items),
           }));
           const restoredPool = mapIds(saved.pool);
-          // validate completeness: union should equal initialModels
           const restoredIds = new Set([
             ...restoredPool.map((m) => m.id),
             ...restoredTiers.flatMap((t) => t.items.map((m) => m.id)),
@@ -101,14 +95,13 @@ export function TierBoard({
         }
       }
     } catch {
-      // ignore corrupt storage
+      // ignore
     } finally {
       didLoadRef.current = true;
       setIsHydrated(true);
     }
   }, [initialModels]);
 
-  // persist
   useEffect(() => {
     if (!didLoadRef.current) return;
     try {
@@ -125,7 +118,7 @@ export function TierBoard({
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
-      // quota or privacy mode
+      // ignore
     }
   }, [tiers, pool, initialModels]);
 
@@ -141,7 +134,6 @@ export function TierBoard({
     );
   }, [pool, poolSearch]);
 
-  // ---- drag helpers ----
   const handleDragStart = (
     e: React.DragEvent,
     model: Model,
@@ -173,7 +165,6 @@ export function TierBoard({
     setDropHint({ tierId, beforeId });
   };
 
-  // move dragged to tier at insert position
   const handleDropOnTier = (e: React.DragEvent, tierId: string) => {
     e.preventDefault();
     if (!dragged) return;
@@ -181,7 +172,6 @@ export function TierBoard({
     const hint =
       dropHint?.tierId === tierId ? dropHint : { tierId, beforeId: null };
 
-    // remove from source
     if (dragSource === "pool") {
       setPool((p) => p.filter((m) => m.id !== dragged.id));
     } else if (dragSource) {
@@ -194,7 +184,6 @@ export function TierBoard({
       );
     }
 
-    // insert into target at correct index
     setTiers((prev) =>
       prev.map((t) => {
         if (t.id !== tierId) return t;
@@ -253,7 +242,6 @@ export function TierBoard({
     setPool((p) => [...p, model]);
   };
 
-  // tier controls
   const updateTier = (id: string, patch: Partial<Tier>) => {
     setTiers((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   };
@@ -283,13 +271,16 @@ export function TierBoard({
   const addTier = () => {
     const id = `tier-${Date.now()}`;
     const colors = [
-      "#ff6b6b",
-      "#ffd23f",
-      "#7ed957",
-      "#5ca8ff",
-      "#c49bff",
-      "#ff8a2b",
-      "#6bcb77",
+      "#ff7f7f",
+      "#ffbf7f",
+      "#ffdf7f",
+      "#ffff7f",
+      "#bfff7f",
+      "#7fffbf",
+      "#7fffff",
+      "#7fbfff",
+      "#7f7fff",
+      "#bf7fff",
     ];
     const nextLabel = String.fromCharCode(65 + tiers.length) || "X";
     setTiers((prev) => [
@@ -297,7 +288,7 @@ export function TierBoard({
       {
         id,
         label: nextLabel,
-        color: colors[prev.length % colors.length] ?? "#ffffff",
+        color: colors[prev.length % colors.length] ?? "#777",
         items: [],
       },
     ]);
@@ -321,7 +312,7 @@ export function TierBoard({
       const dataUrl = await toPng(boardRef.current, {
         cacheBust: true,
         pixelRatio: 2,
-        backgroundColor: "#f5f5f0",
+        backgroundColor: "#0e0e0e",
       });
       const a = document.createElement("a");
       a.href = dataUrl;
@@ -345,17 +336,19 @@ export function TierBoard({
   return (
     <div className="w-full max-w-[1100px] mx-auto px-4 py-6 flex flex-col gap-4">
       {/* header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-2 border-black bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border border-zinc-800 bg-[#1a1a1a] p-3">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onBack}
-            className="px-3 py-1.5 border-2 border-black bg-white text-xs font-bold hover:bg-black hover:text-white transition-colors"
+            className="px-3 py-1.5 border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200 hover:bg-white hover:text-black hover:border-white transition-colors"
           >
             ← SELECT MODELS
           </button>
-          <h1 className="text-lg font-black tracking-tighter">TIER LIST</h1>
-          <span className="text-xs font-mono border border-black px-1.5 py-0.5 bg-zinc-100">
+          <h1 className="text-lg font-black tracking-tighter text-white">
+            TIER LIST
+          </h1>
+          <span className="text-xs font-mono border border-zinc-700 px-1.5 py-0.5 bg-zinc-900 text-zinc-300">
             {initialModels.length} MODELS
           </span>
           {isHydrated && (
@@ -368,21 +361,21 @@ export function TierBoard({
           <button
             type="button"
             onClick={addTier}
-            className="px-3 py-1.5 border-2 border-black bg-white text-xs font-bold hover:bg-black hover:text-white transition-colors"
+            className="px-3 py-1.5 border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200 hover:bg-white hover:text-black transition-colors"
           >
             + ADD TIER
           </button>
           <button
             type="button"
             onClick={reset}
-            className="px-3 py-1.5 border-2 border-black bg-white text-xs font-bold hover:bg-black hover:text-white transition-colors"
+            className="px-3 py-1.5 border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200 hover:bg-white hover:text-black transition-colors"
           >
             RESET
           </button>
           <button
             type="button"
             onClick={clearSaved}
-            className="px-3 py-1.5 border border-black bg-white text-xs font-mono hover:bg-black hover:text-white transition-colors"
+            className="px-3 py-1.5 border border-zinc-800 bg-transparent text-xs font-mono text-zinc-400 hover:text-white transition-colors"
             title="Clear saved tier list from this browser"
           >
             CLEAR SAVE
@@ -391,20 +384,19 @@ export function TierBoard({
             type="button"
             onClick={handleExport}
             disabled={exporting}
-            className="px-4 py-1.5 border-2 border-black bg-black text-white text-xs font-bold hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+            className="px-4 py-1.5 bg-white text-black text-xs font-bold hover:bg-zinc-200 disabled:opacity-50 transition-colors"
           >
             {exporting ? "EXPORTING…" : "DOWNLOAD PNG"}
           </button>
         </div>
       </div>
 
-      {/* board capture target */}
+      {/* board capture target - no big padding, thin border like screenshot */}
       <div
         ref={boardRef}
-        className="flex flex-col gap-2 border-2 border-black bg-black p-2"
+        className="flex flex-col border border-black bg-black overflow-hidden"
       >
-        {/* tiers */}
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col">
           {tiers.map((tier, idx) => (
             <TierRow
               key={tier.id}
@@ -428,44 +420,45 @@ export function TierBoard({
             />
           ))}
           {tiers.length === 0 && (
-            <div className="bg-white border-2 border-black p-8 text-center text-sm font-mono">
+            <div className="bg-[#1e1e1e] p-8 text-center text-sm font-mono text-zinc-500">
               No tiers. Click ADD TIER.
             </div>
           )}
         </div>
 
-        {/* branding footer inside capture */}
-        <div className="flex items-center justify-between bg-white border-2 border-black px-3 py-1.5 mt-1">
-          <span className="text-[10px] font-mono tracking-widest">
+        <div className="flex items-center justify-between bg-zinc-900 border-t border-black px-3 py-1.5">
+          <span className="text-[10px] font-mono tracking-widest text-zinc-400">
             MODELS.TIERLIST — {new Date().getFullYear()}
           </span>
-          <span className="text-[10px] font-mono">models.dev</span>
+          <span className="text-[10px] font-mono text-zinc-500">
+            models.dev
+          </span>
         </div>
       </div>
 
-      {/* pool */}
-      <div className="border-2 border-black bg-white flex flex-col">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black px-3 py-2 bg-zinc-50">
-          <h2 className="text-xs font-black tracking-widest">
-            POOL — DRAG TO TIERS (or click)
+      {/* pool - thin border */}
+      <div className="border border-zinc-800 bg-[#1a1a1a] flex flex-col">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2 bg-[#1e1e1e]">
+          <h2 className="text-xs font-bold tracking-widest text-zinc-200">
+            POOL
           </h2>
           <div className="flex flex-wrap items-center gap-2">
             <input
               value={poolSearch}
               onChange={(e) => setPoolSearch(e.target.value)}
               placeholder="Search pool…"
-              className="border-2 border-black px-2 py-1 text-xs font-mono outline-none focus:bg-white bg-zinc-50 w-[160px]"
+              className="border border-zinc-700 bg-black px-2 py-1 text-xs font-mono outline-none focus:border-zinc-500 text-white placeholder:text-zinc-500 w-[160px]"
             />
             {poolSearch && (
               <button
                 type="button"
                 onClick={() => setPoolSearch("")}
-                className="text-xs font-mono border border-black px-1.5 py-1 bg-white hover:bg-black hover:text-white transition-colors"
+                className="text-xs font-mono border border-zinc-700 px-1.5 py-1 bg-zinc-900 text-zinc-300 hover:bg-white hover:text-black transition-colors"
               >
                 ×
               </button>
             )}
-            <span className="text-xs font-mono border border-black px-2 py-0.5 bg-white">
+            <span className="text-xs font-mono border border-zinc-700 px-2 py-0.5 bg-zinc-900 text-zinc-300">
               {poolSearch
                 ? `${filteredPool.length}/${pool.length}`
                 : `${pool.length}`}{" "}
@@ -474,7 +467,7 @@ export function TierBoard({
             <button
               type="button"
               onClick={shufflePool}
-              className="text-xs font-bold border border-black px-2 py-0.5 bg-white hover:bg-black hover:text-white transition-colors"
+              className="text-xs font-bold border border-zinc-700 px-2 py-0.5 bg-zinc-900 text-zinc-200 hover:bg-white hover:text-black transition-colors"
             >
               SHUFFLE
             </button>
@@ -488,7 +481,7 @@ export function TierBoard({
                   ),
                 )
               }
-              className="text-xs font-bold border border-black px-2 py-0.5 bg-white hover:bg-black hover:text-white transition-colors"
+              className="text-xs font-bold border border-zinc-700 px-2 py-0.5 bg-zinc-900 text-zinc-200 hover:bg-white hover:text-black transition-colors"
             >
               RESTORE ALL
             </button>
@@ -497,15 +490,15 @@ export function TierBoard({
         <div
           onDragOver={handleDragOver}
           onDrop={handleDropOnPool}
-          className="flex flex-wrap gap-2 p-3 min-h-[140px] bg-zinc-100 content-start"
+          className="flex flex-wrap gap-1.5 p-2 min-h-[120px] bg-[#121212] content-start"
         >
           {pool.length === 0 && (
-            <div className="w-full flex items-center justify-center py-10 text-zinc-400 text-xs font-mono">
+            <div className="w-full flex items-center justify-center py-8 text-zinc-500 text-xs font-mono">
               All models placed — drag back here to remove from tier
             </div>
           )}
           {pool.length > 0 && filteredPool.length === 0 && (
-            <div className="w-full flex items-center justify-center py-10 text-zinc-400 text-xs font-mono">
+            <div className="w-full flex items-center justify-center py-8 text-zinc-500 text-xs font-mono">
               No models match “{poolSearch}”
             </div>
           )}
@@ -520,12 +513,9 @@ export function TierBoard({
             />
           ))}
         </div>
-        <div className="border-t-2 border-black px-3 py-2 bg-white flex flex-wrap gap-2 text-[10px] font-mono text-zinc-500">
-          <span>
-            TIP: Drag & drop between tiers. Hover a card to insert before it.
-            Click label to rename. Click color dot to change color. Click a card
-            to quick-move.
-          </span>
+        <div className="border-t border-zinc-800 px-3 py-2 bg-[#1a1a1a] text-[10px] font-mono text-zinc-500">
+          Drag & drop between tiers • Hover a card to insert before it • Click
+          gear to edit tier • Click card to quick-move
         </div>
       </div>
     </div>

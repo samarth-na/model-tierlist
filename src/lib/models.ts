@@ -21,12 +21,14 @@ export type Tier = {
 };
 
 export const DEFAULT_TIERS: Omit<Tier, "items">[] = [
-  { id: "s", label: "S", color: "#ff4b4b" },
-  { id: "a", label: "A", color: "#ff8a2b" },
-  { id: "b", label: "B", color: "#ffcf0f" },
-  { id: "c", label: "C", color: "#7ed957" },
-  { id: "d", label: "D", color: "#5ca8ff" },
-  { id: "f", label: "F", color: "#c49bff" },
+  { id: "s", label: "S", color: "#ff7f7f" },
+  { id: "a", label: "A", color: "#ffbf7f" },
+  { id: "b", label: "B", color: "#ffdf7f" },
+  { id: "c", label: "C", color: "#ffff7f" },
+  { id: "d", label: "D", color: "#bfff7f" },
+  { id: "e", label: "E", color: "#7fff7f" },
+  { id: "f", label: "F", color: "#7fffff" },
+  { id: "dont", label: "Don't used", color: "#7fbfff" },
 ];
 
 // Fetch canonical models (355) - cheaper / cleaner for tier lists
@@ -59,6 +61,41 @@ export async function fetchModels(): Promise<Model[]> {
 // Provider logos via models.dev
 export function logoUrl(providerId: string) {
   return `https://models.dev/logos/${providerId}.svg`;
+}
+
+const BRAND: Record<string, string> = {
+  openai: "#111111",
+  anthropic: "#c97a3a",
+  google: "#4285f4",
+  meta: "#0668e1",
+  deepseek: "#4d6bfe",
+  xai: "#ffffff",
+  alibaba: "#ff6a00",
+  mistral: "#ff7000",
+  nvidia: "#76b900",
+  zhipuai: "#2d6bff",
+  moonshotai: "#7c3aed",
+  "bytedance-seed": "#00c6ff",
+  bytedance: "#00c6ff",
+  minimax: "#5a2ff0",
+  tencent: "#006eff",
+  xiaomi: "#ff6900",
+  stepfun: "#ff4d4f",
+  upstage: "#00c2a2",
+  cohere: "#39594e",
+  sakana: "#ff3b6b",
+  arcee_ai: "#00b894",
+  "arcee-ai": "#00b894",
+  poolside: "#0ea5e9",
+  perplexity: "#1ea2ff",
+  groq: "#f55036",
+  fireworks: "#ff3366",
+  together: "#00cc99",
+  huggingface: "#ff9d00",
+};
+
+export function providerBrandColor(providerId: string) {
+  return BRAND[providerId] ?? "#e5e5e5";
 }
 
 // Format version/label: use last segment after slash or release date
