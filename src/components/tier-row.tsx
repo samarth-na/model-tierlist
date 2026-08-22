@@ -17,7 +17,8 @@ export function TierRow({
   isFirst,
   isLast,
   onItemClick,
-  onPoolDrop, // click-to-move fallback
+  dropHint,
+  onCardDragOver,
 }: {
   tier: Tier;
   onDragOver: (e: React.DragEvent) => void;
@@ -32,8 +33,17 @@ export function TierRow({
   isFirst: boolean;
   isLast: boolean;
   onItemClick?: (model: Model) => void;
-  onPoolDrop?: () => void;
+  dropHint?: { tierId: string; beforeId: string | null } | null;
+  onCardDragOver?: (beforeId: string | null) => void;
 }) {
+  const handleZoneDragOver = (e: React.DragEvent) => {
+    // only fire when hovering the zone itself, not a card wrapper (which stops propagation)
+    onDragOver(e);
+    if (e.target === e.currentTarget) {
+      onCardDragOver?.(null);
+    }
+  };
+
   return (
     <div className="flex min-h-[96px] border-2 border-black bg-white w-full">
       {/* label */}
@@ -64,6 +74,7 @@ export function TierRow({
             />
           </label>
           <button
+            type="button"
             onClick={onMoveUp}
             disabled={isFirst}
             className="w-5 h-5 border border-black bg-white text-[10px] font-bold disabled:opacity-30 hover:bg-black hover:text-white transition-colors"
@@ -72,6 +83,7 @@ export function TierRow({
             ↑
           </button>
           <button
+            type="button"
             onClick={onMoveDown}
             disabled={isLast}
             className="w-5 h-5 border border-black bg-white text-[10px] font-bold disabled:opacity-30 hover:bg-black hover:text-white transition-colors"
@@ -80,6 +92,7 @@ export function TierRow({
             ↓
           </button>
           <button
+            type="button"
             onClick={onDelete}
             className="w-5 h-5 border border-black bg-white text-[10px] font-bold hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors"
             title="Delete tier (items go to pool)"
@@ -91,7 +104,7 @@ export function TierRow({
 
       {/* drop zone */}
       <div
-        onDragOver={onDragOver}
+        onDragOver={handleZoneDragOver}
         onDrop={onDrop}
         className="flex-1 flex flex-wrap gap-1 p-1.5 bg-zinc-100 min-h-[96px] content-start"
       >
@@ -100,16 +113,38 @@ export function TierRow({
             DROP HERE
           </div>
         )}
-        {tier.items.map((m) => (
-          <ModelCard
-            key={m.id}
-            model={m}
-            onDragStart={(e) => onDragStart(e, m)}
-            onDragEnd={onDragEnd}
-            onClick={() => onItemClick?.(m)}
-            size="default"
-          />
-        ))}
+        {tier.items.map((m) => {
+          const showIndicator =
+            dropHint?.tierId === tier.id && dropHint?.beforeId === m.id;
+          return (
+            <div
+              key={m.id}
+              className="relative shrink-0"
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onCardDragOver?.(m.id);
+              }}
+            >
+              {showIndicator && (
+                <div className="absolute -left-[6px] top-0 bottom-0 w-[3px] bg-black z-10 pointer-events-none" />
+              )}
+              <ModelCard
+                model={m}
+                onDragStart={(e) => onDragStart(e, m)}
+                onDragEnd={onDragEnd}
+                onClick={() => onItemClick?.(m)}
+                size="default"
+              />
+            </div>
+          );
+        })}
+        {/* trailing append indicator when hint says append */}
+        {dropHint?.tierId === tier.id &&
+          dropHint?.beforeId === null &&
+          tier.items.length > 0 && (
+            <div className="w-[3px] bg-black/60 self-stretch ml-1 pointer-events-none" />
+          )}
       </div>
     </div>
   );

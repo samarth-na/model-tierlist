@@ -1,10 +1,26 @@
 "use client";
 
 import { toPng } from "html-to-image";
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ModelCard } from "@/components/model-card";
 import { TierRow } from "@/components/tier-row";
 import { DEFAULT_TIERS, type Model, type Tier } from "@/lib/models";
+
+const STORAGE_KEY = "models-tierlist-v1";
+
+type SavedState = {
+  v: 1;
+  selectionKey: string;
+  tiers: { id: string; label: string; color: string; items: string[] }[];
+  pool: string[];
+};
+
+function selectionKey(models: Model[]) {
+  return [...models]
+    .map((m) => m.id)
+    .sort()
+    .join("|");
+}
 
 export function TierBoard({
   initialModels,
@@ -18,9 +34,112 @@ export function TierBoard({
   );
   const [pool, setPool] = useState<Model[]>(initialModels);
   const [dragged, setDragged] = useState<Model | null>(null);
-  const [dragSource, setDragSource] = useState<string | null>(null); // tier id or "pool"
+  const [dragSource, setDragSource] = useState<string | null>(null);
+  const [dropHint, setDropHint] = useState<{
+    tierId: string;
+    beforeId: string | null;
+  } | null>(null);
+  const [poolSearch, setPoolSearch] = useState("");
   const boardRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
+  const didLoadRef = useRef(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // keep pool in sync if initialModels changes (new selection)
+  useEffect(() => {
+    if (!didLoadRef.current) return;
+    // selection changed — reset to new models unless saved matches new key
+    // save effect will overwrite, so just re-init pool/tiers
+    const placed = new Set(tiers.flatMap((t) => t.items.map((m) => m.id)));
+    const _freshPool = initialModels.filter((m) => !placed.has(m.id));
+    // only reset if initialModels key differs from current pool+tiers union
+    const currentIds = new Set(
+      [...pool, ...tiers.flatMap((t) => t.items)].map((m) => m.id),
+    );
+    const nextIds = new Set(initialModels.map((m) => m.id));
+    const same =
+      currentIds.size === nextIds.size &&
+      [...currentIds].every((id) => nextIds.has(id));
+    if (!same) {
+      setPool(initialModels);
+      setTiers(DEFAULT_TIERS.map((t) => ({ ...t, items: [] })));
+    }
+  }, [initialModels, pool, tiers.flatMap]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // restore from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as SavedState;
+        if (
+          saved?.v === 1 &&
+          saved.selectionKey === selectionKey(initialModels)
+        ) {
+          const byId = new Map(initialModels.map((m) => [m.id, m] as const));
+          const mapIds = (ids: string[]) =>
+            ids.map((id) => byId.get(id)).filter((x): x is Model => !!x);
+          const restoredTiers: Tier[] = saved.tiers.map((t) => ({
+            id: t.id,
+            label: t.label,
+            color: t.color,
+            items: mapIds(t.items),
+          }));
+          const restoredPool = mapIds(saved.pool);
+          // validate completeness: union should equal initialModels
+          const restoredIds = new Set([
+            ...restoredPool.map((m) => m.id),
+            ...restoredTiers.flatMap((t) => t.items.map((m) => m.id)),
+          ]);
+          if (
+            restoredIds.size === initialModels.length &&
+            initialModels.every((m) => restoredIds.has(m.id))
+          ) {
+            setTiers(restoredTiers);
+            setPool(restoredPool);
+          }
+        }
+      }
+    } catch {
+      // ignore corrupt storage
+    } finally {
+      didLoadRef.current = true;
+      setIsHydrated(true);
+    }
+  }, [initialModels]);
+
+  // persist
+  useEffect(() => {
+    if (!didLoadRef.current) return;
+    try {
+      const state: SavedState = {
+        v: 1,
+        selectionKey: selectionKey(initialModels),
+        tiers: tiers.map((t) => ({
+          id: t.id,
+          label: t.label,
+          color: t.color,
+          items: t.items.map((m) => m.id),
+        })),
+        pool: pool.map((m) => m.id),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      // quota or privacy mode
+    }
+  }, [tiers, pool, initialModels]);
+
+  const filteredPool = useMemo(() => {
+    const q = poolSearch.trim().toLowerCase();
+    if (!q) return pool;
+    return pool.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.id.toLowerCase().includes(q) ||
+        m.providerId.toLowerCase().includes(q) ||
+        m.family?.toLowerCase().includes(q),
+    );
+  }, [pool, poolSearch]);
 
   // ---- drag helpers ----
   const handleDragStart = (
@@ -32,7 +151,6 @@ export function TierBoard({
     setDragSource(sourceId);
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", model.id);
-    // ghost opacity
     setTimeout(() => {
       (e.target as HTMLElement).classList.add("dragging");
     }, 0);
@@ -42,6 +160,7 @@ export function TierBoard({
     (e.target as HTMLElement).classList.remove("dragging");
     setDragged(null);
     setDragSource(null);
+    setDropHint(null);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -49,10 +168,18 @@ export function TierBoard({
     e.dataTransfer.dropEffect = "move";
   };
 
-  // move dragged to tier
+  const handleCardDragOver = (tierId: string, beforeId: string | null) => {
+    if (!dragged) return;
+    setDropHint({ tierId, beforeId });
+  };
+
+  // move dragged to tier at insert position
   const handleDropOnTier = (e: React.DragEvent, tierId: string) => {
     e.preventDefault();
     if (!dragged) return;
+
+    const hint =
+      dropHint?.tierId === tierId ? dropHint : { tierId, beforeId: null };
 
     // remove from source
     if (dragSource === "pool") {
@@ -67,46 +194,46 @@ export function TierBoard({
       );
     }
 
-    // add to target if not already there (avoid dup during reorder)
+    // insert into target at correct index
     setTiers((prev) =>
       prev.map((t) => {
         if (t.id !== tierId) return t;
-        // if moving within same tier, append at end (simple). For reorder we could insert index but keep simple
-        const already = t.items.find((m) => m.id === dragged.id);
-        if (already && dragSource === tierId) {
-          // re-append to end to allow reorder via drag
-          return {
-            ...t,
-            items: [...t.items.filter((m) => m.id !== dragged.id), dragged],
-          };
+        const without = t.items.filter((m) => m.id !== dragged.id);
+        if (hint.beforeId) {
+          const idx = without.findIndex((m) => m.id === hint.beforeId);
+          if (idx === -1) return { ...t, items: [...without, dragged] };
+          const next = [...without];
+          next.splice(idx, 0, dragged);
+          return { ...t, items: next };
         }
-        return { ...t, items: [...t.items, dragged] };
+        return { ...t, items: [...without, dragged] };
       }),
     );
 
     setDragged(null);
     setDragSource(null);
+    setDropHint(null);
   };
 
   const handleDropOnPool = (e: React.DragEvent) => {
     e.preventDefault();
-    if (!dragged || dragSource === "pool") return;
-    // remove from tier
+    if (!dragged || dragSource === "pool") {
+      setDropHint(null);
+      return;
+    }
     setTiers((prev) =>
       prev.map((t) => ({
         ...t,
         items: t.items.filter((m) => m.id !== dragged.id),
       })),
     );
-    // dedup
     setPool((p) => (p.find((m) => m.id === dragged.id) ? p : [...p, dragged]));
     setDragged(null);
     setDragSource(null);
+    setDropHint(null);
   };
 
-  // click-to-move fallback (mobile): click item in pool -> move to first tier, click item in tier -> back to pool
   const handlePoolItemClick = (model: Model) => {
-    // Move to first tier that exists, or distribute? Just move to S
     const target = tiers[0];
     if (!target) return;
     setPool((p) => p.filter((m) => m.id !== model.id));
@@ -139,6 +266,7 @@ export function TierBoard({
       if (ni < 0 || ni >= prev.length) return prev;
       const copy = [...prev];
       const [moved] = copy.splice(idx, 1);
+      if (!moved) return prev;
       copy.splice(ni, 0, moved);
       return copy;
     });
@@ -163,14 +291,13 @@ export function TierBoard({
       "#ff8a2b",
       "#6bcb77",
     ];
-    const _labels = ["S", "A", "B", "C", "D", "E", "F"];
     const nextLabel = String.fromCharCode(65 + tiers.length) || "X";
     setTiers((prev) => [
       ...prev,
       {
         id,
         label: nextLabel,
-        color: colors[prev.length % colors.length],
+        color: colors[prev.length % colors.length] ?? "#ffffff",
         items: [],
       },
     ]);
@@ -180,6 +307,7 @@ export function TierBoard({
     const all = [...pool, ...tiers.flatMap((t) => t.items)];
     setPool(all);
     setTiers((prev) => prev.map((t) => ({ ...t, items: [] })));
+    setPoolSearch("");
   };
 
   const shufflePool = () => {
@@ -207,12 +335,20 @@ export function TierBoard({
     }
   };
 
+  const clearSaved = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+    reset();
+  };
+
   return (
     <div className="w-full max-w-[1100px] mx-auto px-4 py-6 flex flex-col gap-4">
       {/* header */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-2 border-black bg-white p-3">
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={onBack}
             className="px-3 py-1.5 border-2 border-black bg-white text-xs font-bold hover:bg-black hover:text-white transition-colors"
           >
@@ -222,26 +358,42 @@ export function TierBoard({
           <span className="text-xs font-mono border border-black px-1.5 py-0.5 bg-zinc-100">
             {initialModels.length} MODELS
           </span>
+          {isHydrated && (
+            <span className="text-[10px] font-mono text-zinc-500 hidden sm:inline">
+              AUTO-SAVED
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
+            type="button"
             onClick={addTier}
             className="px-3 py-1.5 border-2 border-black bg-white text-xs font-bold hover:bg-black hover:text-white transition-colors"
           >
             + ADD TIER
           </button>
           <button
+            type="button"
             onClick={reset}
             className="px-3 py-1.5 border-2 border-black bg-white text-xs font-bold hover:bg-black hover:text-white transition-colors"
           >
             RESET
           </button>
           <button
+            type="button"
+            onClick={clearSaved}
+            className="px-3 py-1.5 border border-black bg-white text-xs font-mono hover:bg-black hover:text-white transition-colors"
+            title="Clear saved tier list from this browser"
+          >
+            CLEAR SAVE
+          </button>
+          <button
+            type="button"
             onClick={handleExport}
             disabled={exporting}
             className="px-4 py-1.5 border-2 border-black bg-black text-white text-xs font-bold hover:bg-zinc-800 disabled:opacity-50 transition-colors"
           >
-            {exporting ? "EXPORTING..." : "DOWNLOAD PNG"}
+            {exporting ? "EXPORTING…" : "DOWNLOAD PNG"}
           </button>
         </div>
       </div>
@@ -269,6 +421,10 @@ export function TierBoard({
               isFirst={idx === 0}
               isLast={idx === tiers.length - 1}
               onItemClick={(m) => handleTierItemClick(m, tier.id)}
+              dropHint={dropHint}
+              onCardDragOver={(beforeId) =>
+                handleCardDragOver(tier.id, beforeId)
+              }
             />
           ))}
           {tiers.length === 0 && (
@@ -289,21 +445,41 @@ export function TierBoard({
 
       {/* pool */}
       <div className="border-2 border-black bg-white flex flex-col">
-        <div className="flex items-center justify-between border-b-2 border-black px-3 py-2 bg-zinc-50">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black px-3 py-2 bg-zinc-50">
           <h2 className="text-xs font-black tracking-widest">
             POOL — DRAG TO TIERS (or click)
           </h2>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={poolSearch}
+              onChange={(e) => setPoolSearch(e.target.value)}
+              placeholder="Search pool…"
+              className="border-2 border-black px-2 py-1 text-xs font-mono outline-none focus:bg-white bg-zinc-50 w-[160px]"
+            />
+            {poolSearch && (
+              <button
+                type="button"
+                onClick={() => setPoolSearch("")}
+                className="text-xs font-mono border border-black px-1.5 py-1 bg-white hover:bg-black hover:text-white transition-colors"
+              >
+                ×
+              </button>
+            )}
             <span className="text-xs font-mono border border-black px-2 py-0.5 bg-white">
-              {pool.length} LEFT
+              {poolSearch
+                ? `${filteredPool.length}/${pool.length}`
+                : `${pool.length}`}{" "}
+              LEFT
             </span>
             <button
+              type="button"
               onClick={shufflePool}
               className="text-xs font-bold border border-black px-2 py-0.5 bg-white hover:bg-black hover:text-white transition-colors"
             >
               SHUFFLE
             </button>
             <button
+              type="button"
               onClick={() =>
                 setPool(
                   initialModels.filter(
@@ -328,7 +504,12 @@ export function TierBoard({
               All models placed — drag back here to remove from tier
             </div>
           )}
-          {pool.map((m) => (
+          {pool.length > 0 && filteredPool.length === 0 && (
+            <div className="w-full flex items-center justify-center py-10 text-zinc-400 text-xs font-mono">
+              No models match “{poolSearch}”
+            </div>
+          )}
+          {filteredPool.map((m) => (
             <ModelCard
               key={m.id}
               model={m}
@@ -341,8 +522,9 @@ export function TierBoard({
         </div>
         <div className="border-t-2 border-black px-3 py-2 bg-white flex flex-wrap gap-2 text-[10px] font-mono text-zinc-500">
           <span>
-            TIP: Drag & drop between tiers. Click label to rename. Click color
-            dot to change color. Click a card to quick-move.
+            TIP: Drag & drop between tiers. Hover a card to insert before it.
+            Click label to rename. Click color dot to change color. Click a card
+            to quick-move.
           </span>
         </div>
       </div>
