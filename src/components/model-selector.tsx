@@ -3,7 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { ModelCard } from "@/components/model-card";
 import type { Model } from "@/lib/models";
-import { DEFAULT_LABS, PRESETS, resolvePreset } from "@/lib/presets";
+import {
+  DEFAULT_LABS,
+  PRESETS as BUILT_IN_PRESETS,
+  resolvePreset,
+} from "@/lib/presets";
+import {
+  addCustomPreset,
+  deleteCustomPreset,
+  loadCustomPresets,
+  type CustomPreset,
+} from "@/lib/custom-presets";
 
 export function ModelSelector({
   models,
@@ -21,6 +31,17 @@ export function ModelSelector({
     () => new Set((initialSelected ?? []).map((m) => m.id)),
   );
   const [showOnlySelected, setShowOnlySelected] = useState(false);
+  const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
+  const [newPresetName, setNewPresetName] = useState("");
+
+  useEffect(() => {
+    setCustomPresets(loadCustomPresets());
+  }, []);
+
+  const PRESETS = useMemo(
+    () => [...customPresets, ...BUILT_IN_PRESETS],
+    [customPresets],
+  );
 
   const _initialKey = (initialSelected ?? [])
     .map((m) => m.id)
@@ -143,7 +164,20 @@ export function ModelSelector({
       }
     }
     return active;
-  }, [models, selectedIds]);
+  }, [models, selectedIds, PRESETS]);
+
+  const handleSavePreset = () => {
+    const name = newPresetName.trim();
+    if (!name || selectedIds.size < 2) return;
+    addCustomPreset(name, [...selectedIds], `${selectedIds.size} models`);
+    setCustomPresets(loadCustomPresets());
+    setNewPresetName("");
+  };
+
+  const handleDeletePreset = (id: string) => {
+    deleteCustomPreset(id);
+    setCustomPresets(loadCustomPresets());
+  };
 
   return (
     <div className="w-full max-w-[1100px] mx-auto px-4 py-6 flex flex-col gap-4">
@@ -192,43 +226,59 @@ export function ModelSelector({
             {PRESETS.map((p) => {
               const count = resolvePreset(p, models).length;
               const active = activePresetIds.has(p.id);
+              const isCustom = (p as CustomPreset).custom === true;
               return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={(e) => {
-                    if (e.shiftKey) applyPreset(p.id);
-                    else togglePreset(p.id);
-                  }}
-                  className={`group border px-2.5 py-1.5 text-left transition-colors ${
-                    active
-                      ? "bg-white border-white"
-                      : "bg-zinc-900 border-zinc-700 hover:bg-white hover:border-white"
-                  }`}
-                  title={`${p.description} (${count} models) — click to toggle, shift+click to replace. ${
-                    active ? "ACTIVE" : ""
-                  }`}
-                >
-                  <div
-                    className={`text-xs font-bold tracking-wide leading-none ${
+                <div key={p.id} className="relative group">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      if (e.shiftKey) applyPreset(p.id);
+                      else togglePreset(p.id);
+                    }}
+                    className={`border px-2.5 py-1.5 text-left transition-colors pr-6 ${
                       active
-                        ? "text-black"
-                        : "text-white group-hover:text-black"
-                    }`}
+                        ? "bg-white border-white"
+                        : "bg-zinc-900 border-zinc-700 hover:bg-white hover:border-white"
+                    } ${isCustom ? "border-dashed" : ""}`}
+                    title={`${p.description} (${count} models) — click to toggle, shift+click to replace. ${
+                      active ? "ACTIVE" : ""
+                    } ${isCustom ? "CUSTOM" : ""}`}
                   >
-                    {p.label}
-                    {active ? " ✓" : ""}
-                  </div>
-                  <div
-                    className={`text-[10px] font-mono leading-none mt-0.5 ${
-                      active
-                        ? "text-zinc-600"
-                        : "text-zinc-400 group-hover:text-zinc-600"
-                    }`}
-                  >
-                    {count} models
-                  </div>
-                </button>
+                    <div
+                      className={`text-xs font-bold tracking-wide leading-none ${
+                        active
+                          ? "text-black"
+                          : "text-white group-hover:text-black"
+                      }`}
+                    >
+                      {p.label}
+                      {active ? " ✓" : ""}
+                      {isCustom ? " ★" : ""}
+                    </div>
+                    <div
+                      className={`text-[10px] font-mono leading-none mt-0.5 ${
+                        active
+                          ? "text-zinc-600"
+                          : "text-zinc-400 group-hover:text-zinc-600"
+                      }`}
+                    >
+                      {count} models
+                    </div>
+                  </button>
+                  {isCustom && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeletePreset(p.id);
+                      }}
+                      className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 text-white text-[8px] flex items-center justify-center border border-black opacity-0 group-hover:opacity-100 hover:bg-red-700 transition-opacity"
+                      title="Delete custom preset"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -238,6 +288,29 @@ export function ModelSelector({
               models
             </div>
           )}
+          <div className="flex flex-wrap gap-2 items-center border-t border-zinc-800 pt-2 mt-1">
+            <input
+              value={newPresetName}
+              onChange={(e) => setNewPresetName(e.target.value)}
+              placeholder="New preset name…"
+              className="flex-1 min-w-[160px] border border-zinc-700 bg-black px-2 py-1.5 text-xs font-mono text-white placeholder:text-zinc-500 outline-none focus:border-zinc-500"
+              maxLength={24}
+            />
+            <button
+              type="button"
+              onClick={handleSavePreset}
+              disabled={!newPresetName.trim() || selectedIds.size < 2}
+              className="px-3 py-1.5 bg-white text-black text-xs font-bold disabled:opacity-30 hover:bg-zinc-200 transition-colors"
+              title="Save current selection as custom preset (stored in localStorage)"
+            >
+              SAVE AS PRESET ({selectedIds.size})
+            </button>
+            {customPresets.length > 0 && (
+              <span className="text-[10px] font-mono text-zinc-500">
+                {customPresets.length} custom saved • stored locally
+              </span>
+            )}
+          </div>
         </div>
 
         {/* controls */}

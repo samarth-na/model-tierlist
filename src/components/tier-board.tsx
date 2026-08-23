@@ -479,6 +479,30 @@ export function TierBoard({
           </button>
           <button
             type="button"
+            onClick={() => {
+              const name = window.prompt("Name this tier list?");
+              if (!name || !name.trim()) return;
+              const allIds = [
+                ...pool,
+                ...tiers.flatMap((t) => t.items),
+              ].map((m) => m.id);
+              const entry = createEntryFromBoard(
+                `list-${Date.now()}`,
+                tiers,
+                pool.map((m) => m.id),
+                allIds,
+                name.trim(),
+              );
+              upsertHistory(entry);
+              onHistoryChange?.();
+            }}
+            className="px-3 py-1.5 border border-zinc-700 bg-zinc-900 text-xs font-bold text-white hover:bg-white hover:text-black transition-colors"
+            title="Save current board as named list (kept in history)"
+          >
+            SAVE LIST
+          </button>
+          <button
+            type="button"
             onClick={handleExport}
             disabled={exporting}
             className="px-4 py-1.5 bg-white text-black text-xs font-bold hover:bg-zinc-200 disabled:opacity-50 transition-colors"
