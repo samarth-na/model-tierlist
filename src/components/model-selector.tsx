@@ -1,21 +1,36 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ModelCard } from "@/components/model-card";
 import type { Model } from "@/lib/models";
-import { PRESETS, resolvePreset } from "@/lib/presets";
+import { DEFAULT_LABS, PRESETS, resolvePreset } from "@/lib/presets";
 
 export function ModelSelector({
   models,
   onStart,
+  initialSelected,
 }: {
   models: Model[];
   onStart: (selected: Model[]) => void;
+  initialSelected?: Model[];
 }) {
   const [search, setSearch] = useState("");
   const [labFilter, setLabFilter] = useState<string>("all");
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [onlyDefaultLabs, setOnlyDefaultLabs] = useState(true);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set((initialSelected ?? []).map((m) => m.id)),
+  );
   const [showOnlySelected, setShowOnlySelected] = useState(false);
+
+  const _initialKey = (initialSelected ?? [])
+    .map((m) => m.id)
+    .sort()
+    .join("|");
+  useEffect(() => {
+    if (initialSelected && initialSelected.length > 0) {
+      setSelectedIds(new Set(initialSelected.map((m) => m.id)));
+    }
+  }, [initialSelected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const labs = useMemo(() => {
     const s = new Set(models.map((m) => m.providerId));
@@ -24,6 +39,7 @@ export function ModelSelector({
 
   const filtered = useMemo(() => {
     return models.filter((m) => {
+      if (onlyDefaultLabs && !DEFAULT_LABS.has(m.providerId)) return false;
       if (labFilter !== "all" && m.providerId !== labFilter) return false;
       if (showOnlySelected && !selectedIds.has(m.id)) return false;
       if (!search) return true;
@@ -35,7 +51,14 @@ export function ModelSelector({
         m.family?.toLowerCase().includes(q)
       );
     });
-  }, [models, search, labFilter, selectedIds, showOnlySelected]);
+  }, [
+    models,
+    search,
+    labFilter,
+    onlyDefaultLabs,
+    selectedIds,
+    showOnlySelected,
+  ]);
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -82,7 +105,25 @@ export function ModelSelector({
     setSelectedIds(new Set(resolved.map((m) => m.id)));
   };
 
-  const appendPreset = (presetId: string) => {
+  const togglePreset = (presetId: string) => {
+    const preset = PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    const resolved = resolvePreset(preset, models);
+    const ids = resolved.map((m) => m.id);
+    const allSelected =
+      ids.length > 0 && ids.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const n = new Set(prev);
+      if (allSelected) {
+        for (const id of ids) n.delete(id);
+      } else {
+        for (const id of ids) n.add(id);
+      }
+      return n;
+    });
+  };
+
+  const _appendPreset = (presetId: string) => {
     const preset = PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
     const resolved = resolvePreset(preset, models);
@@ -92,6 +133,17 @@ export function ModelSelector({
       return n;
     });
   };
+
+  const activePresetIds = useMemo(() => {
+    const active = new Set<string>();
+    for (const p of PRESETS) {
+      const ids = resolvePreset(p, models).map((m) => m.id);
+      if (ids.length > 0 && ids.every((id) => selectedIds.has(id))) {
+        active.add(p.id);
+      }
+    }
+    return active;
+  }, [models, selectedIds]);
 
   return (
     <div className="w-full max-w-[1100px] mx-auto px-4 py-6 flex flex-col gap-4">
@@ -130,36 +182,62 @@ export function ModelSelector({
         <div className="flex flex-col gap-2 border-t border-zinc-800 pt-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-bold tracking-widest text-zinc-300">
-              PRESETS
+              PRESETS — MIX ANY
             </h2>
             <span className="text-[10px] font-mono text-zinc-500">
-              click to replace • shift+click to add
+              click to toggle (mix) • shift+click to replace
             </span>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {PRESETS.map((p) => {
               const count = resolvePreset(p, models).length;
+              const active = activePresetIds.has(p.id);
               return (
                 <button
                   key={p.id}
                   type="button"
                   onClick={(e) => {
-                    if (e.shiftKey) appendPreset(p.id);
-                    else applyPreset(p.id);
+                    if (e.shiftKey) applyPreset(p.id);
+                    else togglePreset(p.id);
                   }}
-                  className="group border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-left hover:bg-white hover:border-white transition-colors"
-                  title={`${p.description} (${count} models) — shift+click to add`}
+                  className={`group border px-2.5 py-1.5 text-left transition-colors ${
+                    active
+                      ? "bg-white border-white"
+                      : "bg-zinc-900 border-zinc-700 hover:bg-white hover:border-white"
+                  }`}
+                  title={`${p.description} (${count} models) — click to toggle, shift+click to replace. ${
+                    active ? "ACTIVE" : ""
+                  }`}
                 >
-                  <div className="text-xs font-bold tracking-wide leading-none text-white group-hover:text-black">
+                  <div
+                    className={`text-xs font-bold tracking-wide leading-none ${
+                      active
+                        ? "text-black"
+                        : "text-white group-hover:text-black"
+                    }`}
+                  >
                     {p.label}
+                    {active ? " ✓" : ""}
                   </div>
-                  <div className="text-[10px] font-mono leading-none mt-0.5 text-zinc-400 group-hover:text-zinc-600">
+                  <div
+                    className={`text-[10px] font-mono leading-none mt-0.5 ${
+                      active
+                        ? "text-zinc-600"
+                        : "text-zinc-400 group-hover:text-zinc-600"
+                    }`}
+                  >
                     {count} models
                   </div>
                 </button>
               );
             })}
           </div>
+          {activePresetIds.size > 1 && (
+            <div className="text-[10px] font-mono text-zinc-400">
+              Mixing {activePresetIds.size} presets → {selectedIds.size} unique
+              models
+            </div>
+          )}
         </div>
 
         {/* controls */}
@@ -221,6 +299,15 @@ export function ModelSelector({
             >
               RAND 24
             </button>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none text-zinc-300 ml-2">
+              <input
+                type="checkbox"
+                checked={onlyDefaultLabs}
+                onChange={(e) => setOnlyDefaultLabs(e.target.checked)}
+                className="w-4 h-4 border border-zinc-700 accent-white bg-black"
+              />
+              DEFAULT 17 LABS
+            </label>
             <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none text-zinc-300">
               <input
                 type="checkbox"

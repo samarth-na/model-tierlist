@@ -4,48 +4,204 @@ export type Preset = {
   id: string;
   label: string;
   description: string;
-  // either static ids or dynamic filter
   modelIds?: string[];
   filter?: (m: Model) => boolean;
-  limit?: number; // for dynamic filter, take top N after sort by release_date desc
+  limit?: number;
   sort?: "recency";
 };
 
+export const DEFAULT_LABS = new Set([
+  "openai",
+  "anthropic",
+  "google",
+  "xai",
+  "zhipuai", // z.ai
+  "meta",
+  "thinkingmachines", // inkling
+  "mistral",
+  "tencent",
+  "meituan", // longcat
+  "stepfun",
+  "deepseek",
+  "moonshotai", // kimi
+  "minimax",
+  "xiaomi", // mimo
+  "alibaba", // qwen
+  "nvidia",
+]);
+
+export const US_LABS = new Set([
+  "openai",
+  "anthropic",
+  "google",
+  "meta",
+  "xai",
+  "nvidia",
+  "mistral",
+]);
+
+export const CHINA_LABS = new Set([
+  "alibaba",
+  "deepseek",
+  "zhipuai",
+  "moonshotai",
+  "minimax",
+  "tencent",
+  "xiaomi",
+  "stepfun",
+  "meituan",
+]);
+
 export const PRESETS: Preset[] = [
   {
-    id: "flagship-faceoff",
-    label: "FLAGSHIP FACEOFF",
-    description: "Best model from each major lab — head to head",
+    id: "main-showcase",
+    label: "MAIN — BIG & SMALL PER LAB",
+    description: "Flagship + efficient model from each default lab (26 models)",
+    modelIds: [
+      // openai — big + small
+      "openai/gpt-5.6-sol",
+      "openai/gpt-5.4-nano",
+      // anthropic
+      "anthropic/claude-opus-5",
+      "anthropic/claude-haiku-4-5",
+      // google
+      "google/gemini-3.7-flash",
+      "google/gemini-3.5-flash-lite",
+      // xai
+      "xai/grok-4.6",
+      "xai/grok-4.5",
+      // z.ai (zhipuai)
+      "zhipuai/glm-5.3",
+      "zhipuai/glm-5.1",
+      // meta
+      "meta/muse-spark-1.2",
+      "meta/llama-4-scout-17b-instruct",
+      // inkling (thinkingmachines)
+      "thinkingmachines/inkling",
+      "thinkingmachines/inkling-small",
+      // mistral
+      "mistral/mistral-medium-latest",
+      "mistral/mistral-small-latest",
+      // tencent
+      "tencent/hy3",
+      "tencent/hy3-preview",
+      // longcat (meituan) — single flagship
+      "meituan/longcat-2.0",
+      // stepfun
+      "stepfun/step-3.7-flash",
+      "stepfun/step-3.5-flash",
+      // deepseek — both flash + pro as big & small
+      "deepseek/deepseek-v4-pro-0813",
+      "deepseek/deepseek-v4-flash-0731",
+      // kimi (moonshotai)
+      "moonshotai/kimi-k3",
+      "moonshotai/kimi-k2.5",
+      // minimax
+      "minimax/MiniMax-M3",
+      "minimax/MiniMax-M2.7",
+      // mimo (xiaomi)
+      "xiaomi/mimo-v2.5-pro",
+      "xiaomi/mimo-v2.5",
+      // qwen (alibaba)
+      "alibaba/qwen3.8-2.4t-a95b",
+      "alibaba/qwen3.8-27b",
+      // nvidia
+      "nvidia/nemotron-3-ultra-550b-a55b",
+      "nvidia/nemotron-3.5-lightning",
+    ],
+  },
+  {
+    id: "us-big",
+    label: "US LABS — BIG ONLY",
+    description: "Flagship big models from major US labs",
     modelIds: [
       "openai/gpt-5.6-sol",
       "anthropic/claude-opus-5",
       "google/gemini-3.7-flash",
       "meta/muse-spark-1.2",
-      "deepseek/deepseek-v4-pro-0813",
       "xai/grok-4.6",
-      "alibaba/qwen3.8-27b",
+      "nvidia/nemotron-3-ultra-550b-a55b",
       "mistral/mistral-medium-latest",
-      "nvidia/nemotron-3.5-lightning",
+      "cohere/command-a-plus-05-2026",
+    ],
+  },
+  {
+    id: "china-big",
+    label: "CHINA LABS — BIG ONLY",
+    description: "Flagship big models from major Chinese labs",
+    modelIds: [
+      "alibaba/qwen3.8-2.4t-a95b",
+      "deepseek/deepseek-v4-pro-0813",
       "zhipuai/glm-5.3",
       "moonshotai/kimi-k3",
+      "minimax/MiniMax-M3",
       "bytedance-seed/seed-2.1-turbo",
+      "tencent/hy3",
+      "xiaomi/mimo-v2.5-pro",
+      "stepfun/step-3.7-flash",
+    ],
+  },
+  {
+    id: "flagship-faceoff",
+    label: "FLAGSHIP FACEOFF",
+    description:
+      "All top variants per lab — e.g. Sol/Luna/Terra, Flash+Pro, Max+27B (28)",
+    modelIds: [
+      // openai — all 5.6 variants
+      "openai/gpt-5.6-sol",
+      "openai/gpt-5.6-luna",
+      "openai/gpt-5.6-terra",
+      // anthropic — flagship + sonnet + haiku
+      "anthropic/claude-opus-5",
+      "anthropic/claude-sonnet-5",
+      "anthropic/claude-haiku-4-5",
+      // google
+      "google/gemini-3.7-flash",
+      "google/gemini-flash-latest",
+      // meta
+      "meta/muse-spark-1.2",
+      "meta/muse-glimmer-30b",
+      // deepseek — flash + pro (both current)
+      "deepseek/deepseek-v4-pro",
+      "deepseek/deepseek-v4-flash",
+      "deepseek/deepseek-v4-pro-0813",
+      "deepseek/deepseek-v4-flash-0731",
+      // xai
+      "xai/grok-4.6",
+      "xai/grok-4.5",
+      // alibaba — max + 27b + 2.4t
+      "alibaba/qwen3.8-max",
+      "alibaba/qwen3.8-27b",
+      "alibaba/qwen3.8-2.4t-a95b",
+      // mistral
+      "mistral/mistral-medium-latest",
+      "mistral/mistral-small-latest",
+      // nvidia
+      "nvidia/nemotron-3-ultra-550b-a55b",
+      "nvidia/nemotron-3.5-lightning",
+      // zhipuai
+      "zhipuai/glm-5.3",
+      // moonshotai
+      "moonshotai/kimi-k3",
+      // inkling / longcat
+      "thinkingmachines/inkling",
+      "meituan/longcat-2.0",
       "minimax/MiniMax-M3",
       "tencent/hy3",
       "xiaomi/mimo-v2.5-pro",
-      "cohere/north-mini-code-1-0",
       "stepfun/step-3.7-flash",
-      "upstage/solar-pro4",
     ],
   },
   {
     id: "best-open-weight",
     label: "BEST OPEN WEIGHT",
-    description: "Top open-weight models by recency — strong for self-host",
+    description:
+      "Top open-weight models by recency — strong for self-host (18)",
     filter: (m) => !!m.open_weights,
     limit: 18,
     sort: "recency",
   },
-  // per-lab top picks
+  // per-lab
   {
     id: "lab-openai",
     label: "OPENAI TOP",

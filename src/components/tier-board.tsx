@@ -4,6 +4,7 @@ import { toPng } from "html-to-image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ModelCard } from "@/components/model-card";
 import { TierRow } from "@/components/tier-row";
+import { createEntryFromBoard, upsertHistory } from "@/lib/history";
 import { DEFAULT_TIERS, type Model, type Tier } from "@/lib/models";
 
 const STORAGE_KEY = "models-tierlist-v1";
@@ -24,10 +25,16 @@ function selectionKey(models: Model[]) {
 
 export function TierBoard({
   initialModels,
+  allModels,
   onBack,
+  onSelectionChange,
+  onHistoryChange,
 }: {
   initialModels: Model[];
+  allModels?: Model[];
   onBack: () => void;
+  onSelectionChange?: (next: Model[]) => void;
+  onHistoryChange?: () => void;
 }) {
   const [tiers, setTiers] = useState<Tier[]>(
     DEFAULT_TIERS.map((t) => ({ ...t, items: [] })),
@@ -44,21 +51,36 @@ export function TierBoard({
   const [exporting, setExporting] = useState(false);
   const didLoadRef = useRef(false);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [showAddDrawer, setShowAddDrawer] = useState(false);
+  const [addSearch, setAddSearch] = useState("");
+  const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
+  const boardIdRef = useRef<string>(`board-${Date.now()}`);
 
+  const all = allModels ?? initialModels;
+
+  // additive sync when initialModels changes (preserve tier placements, just add/remove diff)
   useEffect(() => {
     if (!didLoadRef.current) return;
-    const placed = new Set(tiers.flatMap((t) => t.items.map((m) => m.id)));
-    const _freshPool = initialModels.filter((m) => !placed.has(m.id));
     const currentIds = new Set(
       [...pool, ...tiers.flatMap((t) => t.items)].map((m) => m.id),
     );
     const nextIds = new Set(initialModels.map((m) => m.id));
-    const same =
-      currentIds.size === nextIds.size &&
-      [...currentIds].every((id) => nextIds.has(id));
-    if (!same) {
-      setPool(initialModels);
-      setTiers(DEFAULT_TIERS.map((t) => ({ ...t, items: [] })));
+    // add new models to pool
+    const toAdd = initialModels.filter((m) => !currentIds.has(m.id));
+    if (toAdd.length > 0) {
+      setPool((p) => [...p, ...toAdd]);
+    }
+    // remove models that are no longer selected
+    const toRemove = [...currentIds].filter((id) => !nextIds.has(id));
+    if (toRemove.length > 0) {
+      const removeSet = new Set(toRemove);
+      setPool((p) => p.filter((m) => !removeSet.has(m.id)));
+      setTiers((prev) =>
+        prev.map((t) => ({
+          ...t,
+          items: t.items.filter((m) => !removeSet.has(m.id)),
+        })),
+      );
     }
   }, [initialModels, pool, tiers.flatMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -122,6 +144,21 @@ export function TierBoard({
     }
   }, [tiers, pool, initialModels]);
 
+  // history — save every change (never lost)
+  useEffect(() => {
+    if (!didLoadRef.current) return;
+    const allIds = [...pool, ...tiers.flatMap((t) => t.items)].map((m) => m.id);
+    // also include any tier items that might be from history restore? already covered
+    const entry = createEntryFromBoard(
+      boardIdRef.current,
+      tiers,
+      pool.map((m) => m.id),
+      allIds.length > 0 ? allIds : initialModels.map((m) => m.id),
+    );
+    upsertHistory(entry);
+    onHistoryChange?.();
+  }, [tiers, pool, initialModels.map, onHistoryChange]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const filteredPool = useMemo(() => {
     const q = poolSearch.trim().toLowerCase();
     if (!q) return pool;
@@ -133,6 +170,23 @@ export function TierBoard({
         m.family?.toLowerCase().includes(q),
     );
   }, [pool, poolSearch]);
+
+  const addableModels = useMemo(() => {
+    const existing = new Set(
+      [...pool, ...tiers.flatMap((t) => t.items)].map((m) => m.id),
+    );
+    let list = all.filter((m) => !existing.has(m.id));
+    if (addSearch.trim()) {
+      const q = addSearch.toLowerCase();
+      list = list.filter(
+        (m) =>
+          m.name.toLowerCase().includes(q) ||
+          m.id.toLowerCase().includes(q) ||
+          m.providerId.toLowerCase().includes(q),
+      );
+    }
+    return list.slice(0, 80);
+  }, [all, pool, tiers, addSearch]);
 
   const handleDragStart = (
     e: React.DragEvent,
@@ -242,6 +296,39 @@ export function TierBoard({
     setPool((p) => [...p, model]);
   };
 
+  const handleUnselect = (model: Model) => {
+    setPool((p) => p.filter((m) => m.id !== model.id));
+    setTiers((prev) =>
+      prev.map((t) => ({
+        ...t,
+        items: t.items.filter((m) => m.id !== model.id),
+      })),
+    );
+    const nextSelection = [...pool, ...tiers.flatMap((t) => t.items)]
+      .filter((m) => m.id !== model.id)
+      .map((m) => m.id);
+    // also include the removed model's id should not be in next, but pool/tiers already filtered
+    // notify parent to update selected
+    const byId = new Map(all.map((m) => [m.id, m] as const));
+    const nextModels = nextSelection
+      .map((id) => byId.get(id))
+      .filter((x): x is Model => !!x);
+    onSelectionChange?.(nextModels);
+  };
+
+  const handleAddSelected = () => {
+    const byId = new Map(all.map((m) => [m.id, m] as const));
+    const toAdd = [...addSelected]
+      .map((id) => byId.get(id))
+      .filter((x): x is Model => !!x);
+    if (toAdd.length === 0) return;
+    setPool((p) => [...p, ...toAdd]);
+    const nextSelection = [...pool, ...tiers.flatMap((t) => t.items), ...toAdd];
+    onSelectionChange?.(nextSelection);
+    setAddSelected(new Set());
+    setShowAddDrawer(false);
+  };
+
   const updateTier = (id: string, patch: Partial<Tier>) => {
     setTiers((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   };
@@ -295,8 +382,8 @@ export function TierBoard({
   };
 
   const reset = () => {
-    const all = [...pool, ...tiers.flatMap((t) => t.items)];
-    setPool(all);
+    const allCurrent = [...pool, ...tiers.flatMap((t) => t.items)];
+    setPool(allCurrent);
     setTiers((prev) => prev.map((t) => ({ ...t, items: [] })));
     setPoolSearch("");
   };
@@ -333,6 +420,9 @@ export function TierBoard({
     reset();
   };
 
+  const totalInBoard =
+    pool.length + tiers.reduce((s, t) => s + t.items.length, 0);
+
   return (
     <div className="w-full max-w-[1100px] mx-auto px-4 py-6 flex flex-col gap-4">
       {/* header */}
@@ -343,21 +433,28 @@ export function TierBoard({
             onClick={onBack}
             className="px-3 py-1.5 border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200 hover:bg-white hover:text-black hover:border-white transition-colors"
           >
-            ← SELECT MODELS
+            ← BACK TO LIST
           </button>
           <h1 className="text-lg font-black tracking-tighter text-white">
             TIER LIST
           </h1>
           <span className="text-xs font-mono border border-zinc-700 px-1.5 py-0.5 bg-zinc-900 text-zinc-300">
-            {initialModels.length} MODELS
+            {totalInBoard} MODELS
           </span>
           {isHydrated && (
             <span className="text-[10px] font-mono text-zinc-500 hidden sm:inline">
-              AUTO-SAVED
+              AUTO-SAVED • HISTORY KEPT
             </span>
           )}
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setShowAddDrawer((v) => !v)}
+            className="px-3 py-1.5 border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200 hover:bg-white hover:text-black transition-colors"
+          >
+            + ADD MODELS
+          </button>
           <button
             type="button"
             onClick={addTier}
@@ -391,6 +488,80 @@ export function TierBoard({
         </div>
       </div>
 
+      {/* add drawer */}
+      {showAddDrawer && (
+        <div className="border border-zinc-800 bg-[#1a1a1a] p-3 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs font-bold tracking-widest text-zinc-300">
+              ADD MODELS — {addableModels.length} available • {addSelected.size}{" "}
+              selected
+            </h3>
+            <button
+              type="button"
+              onClick={() => setShowAddDrawer(false)}
+              className="text-xs border border-zinc-700 px-2 py-1 text-zinc-400 hover:text-white"
+            >
+              CLOSE
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={addSearch}
+              onChange={(e) => setAddSearch(e.target.value)}
+              placeholder="Search to add…"
+              className="flex-1 border border-zinc-700 bg-black px-2 py-1 text-xs font-mono text-white placeholder:text-zinc-500"
+            />
+            <button
+              type="button"
+              onClick={handleAddSelected}
+              disabled={addSelected.size === 0}
+              className="px-3 py-1 bg-white text-black text-xs font-bold disabled:opacity-30 hover:bg-zinc-200"
+            >
+              ADD SELECTED ({addSelected.size})
+            </button>
+            <button
+              type="button"
+              onClick={() => setAddSelected(new Set())}
+              className="px-2 py-1 border border-zinc-700 text-xs text-zinc-400"
+            >
+              CLEAR
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5 bg-[#121212] p-2 max-h-[260px] overflow-auto content-start">
+            {addableModels.length === 0 ? (
+              <div className="w-full py-8 text-center text-xs font-mono text-zinc-500">
+                No more models to add — all {all.length} are already in board
+              </div>
+            ) : (
+              addableModels.map((m) => {
+                const sel = addSelected.has(m.id);
+                return (
+                  <div
+                    key={m.id}
+                    onClick={() =>
+                      setAddSelected((prev) => {
+                        const n = new Set(prev);
+                        if (n.has(m.id)) n.delete(m.id);
+                        else n.add(m.id);
+                        return n;
+                      })
+                    }
+                    className={`cursor-pointer ${sel ? "ring-2 ring-white" : ""}`}
+                  >
+                    <ModelCard
+                      model={m}
+                      draggable={false}
+                      selected={sel}
+                      size="pool"
+                    />
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
       {/* board capture target - no big padding, thin border like screenshot */}
       <div
         ref={boardRef}
@@ -417,6 +588,7 @@ export function TierBoard({
               onCardDragOver={(beforeId) =>
                 handleCardDragOver(tier.id, beforeId)
               }
+              onUnselect={handleUnselect}
             />
           ))}
           {tiers.length === 0 && (
@@ -503,21 +675,33 @@ export function TierBoard({
             </div>
           )}
           {filteredPool.map((m) => (
-            <ModelCard
-              key={m.id}
-              model={m}
-              onDragStart={(e) => handleDragStart(e, m, "pool")}
-              onDragEnd={handleDragEnd}
-              onClick={() => handlePoolItemClick(m)}
-              size="pool"
-            />
+            <div key={m.id} className="relative group">
+              <ModelCard
+                model={m}
+                onDragStart={(e) => handleDragStart(e, m, "pool")}
+                onDragEnd={handleDragEnd}
+                onClick={() => handlePoolItemClick(m)}
+                size="pool"
+              />
+              <button
+                type="button"
+                onClick={() => handleUnselect(m)}
+                className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 text-white text-[10px] font-bold border border-black opacity-0 group-hover:opacity-100 hover:bg-red-700 transition-opacity flex items-center justify-center"
+                title="Unselect — remove from tier list"
+              >
+                ×
+              </button>
+            </div>
           ))}
         </div>
         <div className="border-t border-zinc-800 px-3 py-2 bg-[#1a1a1a] text-[10px] font-mono text-zinc-500">
           Drag & drop between tiers • Hover a card to insert before it • Click
-          gear to edit tier • Click card to quick-move
+          gear to edit tier • Click card to quick-move • X to unselect
         </div>
       </div>
+
+      {/* also show unselect on tier cards via overlay */}
+      <style>{`.tier-card-wrap .unselect-btn { opacity: 0 } .tier-card-wrap:hover .unselect-btn { opacity: 1 }`}</style>
     </div>
   );
 }

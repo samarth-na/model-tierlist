@@ -20,6 +20,7 @@ export function TierRow({
   onItemClick,
   dropHint,
   onCardDragOver,
+  onUnselect,
 }: {
   tier: Tier;
   onDragOver: (e: React.DragEvent) => void;
@@ -36,6 +37,7 @@ export function TierRow({
   onItemClick?: (model: Model) => void;
   dropHint?: { tierId: string; beforeId: string | null } | null;
   onCardDragOver?: (beforeId: string | null) => void;
+  onUnselect?: (model: Model) => void;
 }) {
   const [showSettings, setShowSettings] = useState(false);
 
@@ -81,7 +83,7 @@ export function TierRow({
           return (
             <div
               key={m.id}
-              className="relative shrink-0"
+              className="relative shrink-0 group"
               onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -98,6 +100,19 @@ export function TierRow({
                 onClick={() => onItemClick?.(m)}
                 size="default"
               />
+              {onUnselect && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUnselect(m);
+                  }}
+                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 text-white text-[8px] font-bold border border-black opacity-0 group-hover:opacity-100 hover:bg-red-700 transition-opacity flex items-center justify-center"
+                  title="Unselect — remove from list"
+                >
+                  ×
+                </button>
+              )}
             </div>
           );
         })}
