@@ -32,10 +32,36 @@ export function TierBoard({
   onSelectionChange?: (next: Model[]) => void;
   onHistoryChange?: () => void;
 }) {
+  const all = allModels ?? initialModels;
+
+  // try to hydrate tiers/pool from board-storage synchronously to avoid flash / overwrite
+  const getInitialBoardState = (): { tiers: Tier[]; pool: Model[] } | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const board = loadBoard();
+      if (!board || board.tiers.length === 0) return null;
+      const byId = new Map(all.map((m) => [m.id, m] as const));
+      const mapIds = (ids: string[]) => ids.map((id) => byId.get(id)).filter((x): x is Model => !!x);
+      const restoredTiers: Tier[] = board.tiers.map((t) => ({
+        id: t.id,
+        label: t.label,
+        color: t.color,
+        items: mapIds(t.items),
+      }));
+      const restoredPool = mapIds(board.pool);
+      return { tiers: restoredTiers, pool: restoredPool };
+    } catch {}
+    return null;
+  };
+
+  const initialBoard = typeof window !== "undefined" ? getInitialBoardState() : null;
+
   const [tiers, setTiers] = useState<Tier[]>(
-    DEFAULT_TIERS.map((t) => ({ ...t, items: [] })),
+    initialBoard?.tiers ?? DEFAULT_TIERS.map((t) => ({ ...t, items: [] })),
   );
-  const [pool, setPool] = useState<Model[]>(initialModels);
+  const [pool, setPool] = useState<Model[]>(
+    initialBoard?.pool ?? [...initialModels],
+  );
   const [dragged, setDragged] = useState<Model | null>(null);
   const [dragSource, setDragSource] = useState<string | null>(null);
   const [dropHint, setDropHint] = useState<{
@@ -53,8 +79,6 @@ export function TierBoard({
   const boardIdRef = useRef<string>(
     `board-${selectionKey(initialModels)}`,
   );
-
-  const all = allModels ?? initialModels;
 
   // additive sync when initialModels changes (preserve tier placements, just add/remove diff)
   useEffect(() => {
@@ -86,12 +110,9 @@ export function TierBoard({
     try {
       const board = loadBoard();
       if (board) {
-        // map using `all` so we can handle any tier item even if initialModels is slightly stale
         const byId = new Map(all.map((m) => [m.id, m] as const));
         const mapIds = (ids: string[]) =>
           ids.map((id) => byId.get(id)).filter((x): x is Model => !!x);
-        // only restore if board actually has content for this selection set
-        // we use board's tiers/pool directly — they were merged via selector so they preserve placements
         const restoredTiers: Tier[] = board.tiers.map((t) => ({
           id: t.id,
           label: t.label,
@@ -99,22 +120,11 @@ export function TierBoard({
           items: mapIds(t.items),
         }));
         const restoredPool = mapIds(board.pool);
-        // sanity: if board is empty but we have initialModels, keep initialModels as pool
-        const hasAnyRestored = restoredTiers.some((t) => t.items.length > 0) || restoredPool.length > 0;
-        if (hasAnyRestored || board.selectionIds.length > 0) {
-          // only apply if the board's selection roughly matches — otherwise keep default
-          // we accept board even if sizes differ slightly (merged selection)
-          setTiers(restoredTiers.length > 0 ? restoredTiers : DEFAULT_TIERS.map((t) => ({ ...t, items: [] })));
-          // if board pool is empty but we have items in tiers, keep empty pool
-          // if both empty, fallback to initialModels as pool
-          if (restoredPool.length > 0 || restoredTiers.some((t) => t.items.length > 0)) {
-            setPool(restoredPool);
-          } else if (initialModels.length > 0) {
-            setPool([...initialModels]);
-          }
-        }
+        // always restore board if it exists — this is the source of truth for every aspect
+        // (tier order, labels, colors, item positions, pool order)
+        setTiers(restoredTiers);
+        setPool(restoredPool);
       } else if (initialModels.length > 0) {
-        // no board yet — initialize pool from initialModels (default tiers already set)
         setPool([...initialModels]);
       }
     } catch {
@@ -123,7 +133,6 @@ export function TierBoard({
       didLoadRef.current = true;
       setIsHydrated(true);
     }
-    // we intentionally run once per initialModels identity change; `all` is stable for mapping
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialModels]);
 
