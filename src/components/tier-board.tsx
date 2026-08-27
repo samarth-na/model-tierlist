@@ -4,7 +4,11 @@ import { toPng } from "html-to-image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ModelCard } from "@/components/model-card";
 import { TierRow } from "@/components/tier-row";
-import { createEntryFromBoard, upsertHistory } from "@/lib/history";
+import {
+  createEntryFromBoard,
+  upsertHistory,
+  upsertHistoryByName,
+} from "@/lib/history";
 import { DEFAULT_TIERS, type Model, type Tier } from "@/lib/models";
 
 const STORAGE_KEY = "models-tierlist-v1";
@@ -54,7 +58,9 @@ export function TierBoard({
   const [showAddDrawer, setShowAddDrawer] = useState(false);
   const [addSearch, setAddSearch] = useState("");
   const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
-  const boardIdRef = useRef<string>(`board-${Date.now()}`);
+  const boardIdRef = useRef<string>(
+    `board-${selectionKey(initialModels)}`,
+  );
 
   const all = allModels ?? initialModels;
 
@@ -486,14 +492,17 @@ export function TierBoard({
                 ...pool,
                 ...tiers.flatMap((t) => t.items),
               ].map((m) => m.id);
-              const entry = createEntryFromBoard(
-                `list-${Date.now()}`,
-                tiers,
-                pool.map((m) => m.id),
-                allIds,
-                name.trim(),
-              );
-              upsertHistory(entry);
+              upsertHistoryByName({
+                tiers: tiers.map((t) => ({
+                  id: t.id,
+                  label: t.label,
+                  color: t.color,
+                  items: t.items.map((m) => m.id),
+                })),
+                pool: pool.map((m) => m.id),
+                selectionIds: allIds,
+                title: name.trim(),
+              });
               onHistoryChange?.();
             }}
             className="px-3 py-1.5 border border-zinc-700 bg-zinc-900 text-xs font-bold text-white hover:bg-white hover:text-black transition-colors"

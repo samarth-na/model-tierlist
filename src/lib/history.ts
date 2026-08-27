@@ -44,6 +44,27 @@ export function deleteHistory(id: string) {
   saveHistory(list);
 }
 
+export function upsertHistoryByName(
+  entry: Omit<HistoryEntry, "id" | "createdAt" | "updatedAt"> & {
+    id?: string;
+  },
+): HistoryEntry {
+  const list = loadHistory();
+  const name = entry.title.trim().toLowerCase();
+  const idx = list.findIndex((e) => e.title.trim().toLowerCase() === name);
+  const now = new Date().toISOString();
+  const next: HistoryEntry = {
+    id: idx >= 0 ? list[idx].id : (entry.id ?? `list-${Date.now()}`),
+    createdAt: idx >= 0 ? list[idx].createdAt : now,
+    updatedAt: now,
+    ...entry,
+  };
+  if (idx >= 0) list[idx] = next;
+  else list.unshift(next);
+  saveHistory(list);
+  return next;
+}
+
 export function createEntryFromBoard(
   id: string,
   tiers: Tier[],

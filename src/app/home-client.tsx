@@ -1,19 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ModelSelector } from "@/components/model-selector";
 import { TierBoard } from "@/components/tier-board";
 import { deleteHistory, type HistoryEntry, loadHistory } from "@/lib/history";
+import { loadLastSelection, saveLastSelection } from "@/lib/last-selection";
 import type { Model } from "@/lib/models";
 
 export function HomeClient({ models }: { models: Model[] }) {
   const [selected, setSelected] = useState<Model[]>([]);
   const [view, setView] = useState<"selector" | "board">("selector");
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const restoredRef = useRef(false);
 
   useEffect(() => {
     setHistory(loadHistory());
   }, []);
+
+  // restore last selection on first mount so the saved board re-loads
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    const ids = loadLastSelection();
+    if (ids.length === 0) return;
+    const byId = new Map(models.map((m) => [m.id, m] as const));
+    const sel = ids.map((id) => byId.get(id)).filter((x): x is Model => !!x);
+    if (sel.length > 0) setSelected(sel);
+  }, [models]);
 
   const refreshHistory = () => setHistory(loadHistory());
 
@@ -31,6 +44,7 @@ export function HomeClient({ models }: { models: Model[] }) {
 
   const handleSelectionChange = (next: Model[]) => {
     setSelected(next);
+    saveLastSelection(next.map((m) => m.id));
   };
 
   const handleRestore = (entry: HistoryEntry) => {
@@ -56,6 +70,7 @@ export function HomeClient({ models }: { models: Model[] }) {
       };
       localStorage.setItem(key, JSON.stringify(draft));
     } catch {}
+    saveLastSelection(sel.map((m) => m.id));
     setSelected(sel);
     setView("board");
   };
