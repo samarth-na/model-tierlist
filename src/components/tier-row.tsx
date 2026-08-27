@@ -42,14 +42,22 @@ export function TierRow({
   const [showSettings, setShowSettings] = useState(false);
   const labelRef = useRef<HTMLTextAreaElement>(null);
 
-  // auto-grow label so a short name stays one line (original height),
-  // only growing for long multi-word names
-  useEffect(() => {
+  const resizeLabel = () => {
     const el = labelRef.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
+  };
+
+  // auto-grow: short labels stay at row min-height, long labels expand
+  // to show 4+ lines — row grows with it
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resize on label change
+  useEffect(() => {
+    resizeLabel();
   }, [tier.label]);
+  useEffect(() => {
+    resizeLabel();
+  }, []);
 
   const PRESET_COLORS = [
     "#ff7f7f",
@@ -75,17 +83,21 @@ export function TierRow({
     <div className="relative flex min-h-[76px] border-b border-black w-full">
       {/* label */}
       <div
-        className="w-[120px] shrink-0 flex items-center justify-center p-2 border-r border-black"
+        className="w-[120px] shrink-0 flex items-center justify-center p-2 border-r border-black self-stretch"
         style={{ background: tier.color }}
       >
         <textarea
           ref={labelRef}
           value={tier.label}
-          onChange={(e) =>
-            onLabelChange(e.target.value.slice(0, 24).toUpperCase())
-          }
-          className="w-full bg-transparent text-center font-bold text-[13px] leading-tight tracking-wide text-black/80 outline-none placeholder:text-black/40 break-words resize-none whitespace-pre-wrap overflow-hidden"
-          maxLength={24}
+          onChange={(e) => {
+            onLabelChange(e.target.value.slice(0, 48).toUpperCase());
+            // resize immediately so 3rd/4th line appears as you type
+            requestAnimationFrame(resizeLabel);
+          }}
+          onInput={resizeLabel}
+          className="w-full bg-transparent text-center font-bold text-[13px] leading-tight tracking-wide text-black/80 outline-none placeholder:text-black/40 break-words resize-none whitespace-pre-wrap overflow-visible"
+          style={{ overflowWrap: "anywhere" } as React.CSSProperties}
+          maxLength={48}
           rows={1}
           spellCheck={false}
         />
@@ -186,7 +198,7 @@ export function TierRow({
             <input
               value={tier.label}
               onChange={(e) =>
-                onLabelChange(e.target.value.slice(0, 24).toUpperCase())
+                onLabelChange(e.target.value.slice(0, 48).toUpperCase())
               }
               className="w-20 bg-black border border-zinc-700 px-2 py-1 text-xs font-bold text-white outline-none"
               placeholder="Label"
