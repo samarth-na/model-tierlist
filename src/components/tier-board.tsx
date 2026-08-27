@@ -9,16 +9,8 @@ import {
   upsertHistory,
   upsertHistoryByName,
 } from "@/lib/history";
+import { BOARD_KEY, clearBoard, loadBoard, saveBoard, type BoardState } from "@/lib/board-storage";
 import { DEFAULT_TIERS, type Model, type Tier } from "@/lib/models";
-
-const STORAGE_KEY = "models-tierlist-v1";
-
-type SavedState = {
-  v: 1;
-  selectionKey: string;
-  tiers: { id: string; label: string; color: string; items: string[] }[];
-  pool: string[];
-};
 
 function selectionKey(models: Model[]) {
   return [...models]
@@ -92,35 +84,38 @@ export function TierBoard({
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as SavedState;
-        if (
-          saved?.v === 1 &&
-          saved.selectionKey === selectionKey(initialModels)
-        ) {
-          const byId = new Map(initialModels.map((m) => [m.id, m] as const));
-          const mapIds = (ids: string[]) =>
-            ids.map((id) => byId.get(id)).filter((x): x is Model => !!x);
-          const restoredTiers: Tier[] = saved.tiers.map((t) => ({
-            id: t.id,
-            label: t.label,
-            color: t.color,
-            items: mapIds(t.items),
-          }));
-          const restoredPool = mapIds(saved.pool);
-          const restoredIds = new Set([
-            ...restoredPool.map((m) => m.id),
-            ...restoredTiers.flatMap((t) => t.items.map((m) => m.id)),
-          ]);
-          if (
-            restoredIds.size === initialModels.length &&
-            initialModels.every((m) => restoredIds.has(m.id))
-          ) {
-            setTiers(restoredTiers);
+      const board = loadBoard();
+      if (board) {
+        // map using `all` so we can handle any tier item even if initialModels is slightly stale
+        const byId = new Map(all.map((m) => [m.id, m] as const));
+        const mapIds = (ids: string[]) =>
+          ids.map((id) => byId.get(id)).filter((x): x is Model => !!x);
+        // only restore if board actually has content for this selection set
+        // we use board's tiers/pool directly — they were merged via selector so they preserve placements
+        const restoredTiers: Tier[] = board.tiers.map((t) => ({
+          id: t.id,
+          label: t.label,
+          color: t.color,
+          items: mapIds(t.items),
+        }));
+        const restoredPool = mapIds(board.pool);
+        // sanity: if board is empty but we have initialModels, keep initialModels as pool
+        const hasAnyRestored = restoredTiers.some((t) => t.items.length > 0) || restoredPool.length > 0;
+        if (hasAnyRestored || board.selectionIds.length > 0) {
+          // only apply if the board's selection roughly matches — otherwise keep default
+          // we accept board even if sizes differ slightly (merged selection)
+          setTiers(restoredTiers.length > 0 ? restoredTiers : DEFAULT_TIERS.map((t) => ({ ...t, items: [] })));
+          // if board pool is empty but we have items in tiers, keep empty pool
+          // if both empty, fallback to initialModels as pool
+          if (restoredPool.length > 0 || restoredTiers.some((t) => t.items.length > 0)) {
             setPool(restoredPool);
+          } else if (initialModels.length > 0) {
+            setPool([...initialModels]);
           }
         }
+      } else if (initialModels.length > 0) {
+        // no board yet — initialize pool from initialModels (default tiers already set)
+        setPool([...initialModels]);
       }
     } catch {
       // ignore
@@ -128,14 +123,15 @@ export function TierBoard({
       didLoadRef.current = true;
       setIsHydrated(true);
     }
+    // we intentionally run once per initialModels identity change; `all` is stable for mapping
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialModels]);
 
   useEffect(() => {
     if (!didLoadRef.current) return;
     try {
-      const state: SavedState = {
-        v: 1,
-        selectionKey: selectionKey(initialModels),
+      const board: BoardState = {
+        v: 2,
         tiers: tiers.map((t) => ({
           id: t.id,
           label: t.label,
@@ -143,12 +139,14 @@ export function TierBoard({
           items: t.items.map((m) => m.id),
         })),
         pool: pool.map((m) => m.id),
+        selectionIds: [...pool, ...tiers.flatMap((t) => t.items)].map((m) => m.id),
+        updatedAt: new Date().toISOString(),
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      saveBoard(board);
     } catch {
       // ignore
     }
-  }, [tiers, pool, initialModels]);
+  }, [tiers, pool]);
 
   // history — save every change (never lost)
   useEffect(() => {
@@ -421,7 +419,10 @@ export function TierBoard({
 
   const clearSaved = () => {
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      clearBoard();
+      // also clear legacy keys for cleanliness
+      localStorage.removeItem("models-tierlist-v1");
+      localStorage.removeItem("models-tierlist-last-selection");
     } catch {}
     reset();
   };

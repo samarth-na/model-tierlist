@@ -32,6 +32,7 @@ export function HomeClient({ models }: { models: Model[] }) {
 
   const handleStart = (m: Model[]) => {
     setSelected(m);
+    saveLastSelection(m.map((x) => x.id));
     setView("board");
     // history will be created by TierBoard on mount
     setTimeout(refreshHistory, 300);
