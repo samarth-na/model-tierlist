@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ModelCard } from "@/components/model-card";
 import type { Model, Tier } from "@/lib/models";
 
@@ -40,6 +40,16 @@ export function TierRow({
   onUnselect?: (model: Model) => void;
 }) {
   const [showSettings, setShowSettings] = useState(false);
+  const labelRef = useRef<HTMLTextAreaElement>(null);
+
+  // auto-grow label so a short name stays one line (original height),
+  // only growing for long multi-word names
+  useEffect(() => {
+    const el = labelRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [tier.label]);
 
   const PRESET_COLORS = [
     "#ff7f7f",
@@ -69,13 +79,14 @@ export function TierRow({
         style={{ background: tier.color }}
       >
         <textarea
+          ref={labelRef}
           value={tier.label}
           onChange={(e) =>
             onLabelChange(e.target.value.slice(0, 24).toUpperCase())
           }
           className="w-full bg-transparent text-center font-bold text-[13px] leading-tight tracking-wide text-black/80 outline-none placeholder:text-black/40 break-words resize-none whitespace-pre-wrap overflow-hidden"
           maxLength={24}
-          rows={2}
+          rows={1}
           spellCheck={false}
         />
       </div>
@@ -138,21 +149,21 @@ export function TierRow({
       </div>
 
       {/* right controls - black bar like screenshot */}
-      <div className="w-[44px] shrink-0 bg-black flex flex-col items-center justify-center gap-1 py-1 border-l border-black">
+      <div className="w-[36px] shrink-0 bg-black flex flex-col items-center justify-center gap-1 py-1 border-l border-black">
         <button
           type="button"
           onClick={() => setShowSettings((v) => !v)}
-          className="w-9 h-9 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+          className="w-6 h-6 flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
           title="Tier settings"
           aria-label="Tier settings"
         >
-          <span className="text-[18px] leading-none">⚙</span>
+          <span className="text-[14px] leading-none">⚙</span>
         </button>
         <button
           type="button"
           onClick={onMoveUp}
           disabled={isFirst}
-          className="w-9 h-7 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-800 disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-[12px]"
+          className="w-6 h-5 flex items-center justify-center text-zinc-400 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-[10px]"
           title="Move up"
         >
           ▲
@@ -161,7 +172,7 @@ export function TierRow({
           type="button"
           onClick={onMoveDown}
           disabled={isLast}
-          className="w-9 h-7 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-800 disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-[12px]"
+          className="w-6 h-5 flex items-center justify-center text-zinc-400 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-[10px]"
           title="Move down"
         >
           ▼
