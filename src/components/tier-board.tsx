@@ -81,8 +81,16 @@ export function TierBoard({
   );
 
   // additive sync when initialModels changes (preserve tier placements, just add/remove diff)
+  // guarded by key ref: without it, this effect re-runs on our own pool
+  // edits (pool is in deps) and reverts them, since the parent prop update
+  // arrives a render later. Only diff when the selection actually changed.
+  const prevSelectionKeyRef = useRef<string>(selectionKey(initialModels));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deps intentionally limited to initialModels; pool/tiers are read via guard ref pattern
   useEffect(() => {
     if (!didLoadRef.current) return;
+    const key = selectionKey(initialModels);
+    if (key === prevSelectionKeyRef.current) return;
+    prevSelectionKeyRef.current = key;
     const currentIds = new Set(
       [...pool, ...tiers.flatMap((t) => t.items)].map((m) => m.id),
     );
@@ -104,7 +112,7 @@ export function TierBoard({
         })),
       );
     }
-  }, [initialModels, pool, tiers.flatMap]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initialModels]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try {

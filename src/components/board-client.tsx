@@ -31,10 +31,13 @@ export function BoardClient({ models }: { models: Model[] }) {
     router.push("/");
   };
 
-  const handleSelectionChange = (_next: Model[]) => {
+  const handleSelectionChange = (next: Model[]) => {
     // TierBoard already persists the updated board (pool+tiers) to board-storage
-    // via its own save effect, which keeps selector's view in sync.
-    // No extra work needed here.
+    // via its own save effect. But we must also update initialModels so the
+    // prop stays in sync — otherwise TierBoard's additive-sync effect sees
+    // added models as "no longer selected" and instantly removes them again
+    // (and re-adds unselected ones to the pool).
+    setInitialModels(next);
   };
 
   if (initialModels === null) {
