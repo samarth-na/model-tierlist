@@ -80,7 +80,7 @@ export function TierRow({
   };
 
   return (
-    <div className="relative flex min-h-[76px] border-b border-black w-full">
+    <div className="relative flex min-h-[96px] border-b border-black w-full">
       {/* label */}
       <div
         className="w-[120px] shrink-0 flex items-center justify-center p-2 border-r border-black self-stretch"
@@ -107,7 +107,7 @@ export function TierRow({
       <div
         onDragOver={handleZoneDragOver}
         onDrop={onDrop}
-        className="flex-1 flex flex-wrap gap-1 p-1.5 bg-[#1e1e1e] min-h-[76px] content-start"
+        className="flex-1 flex flex-wrap gap-1 p-1.5 bg-[#1e1e1e] min-h-[96px] content-start"
       >
         {tier.items.length === 0 && (
           <div className="w-full h-full min-h-[48px] flex items-center justify-center text-zinc-600 text-xs font-mono pointer-events-none select-none">
@@ -135,7 +135,7 @@ export function TierRow({
                 onDragStart={(e) => onDragStart(e, m)}
                 onDragEnd={onDragEnd}
                 onClick={() => onItemClick?.(m)}
-                size="default"
+                size="pool"
               />
               {onUnselect && (
                 <button

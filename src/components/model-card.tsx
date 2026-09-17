@@ -57,11 +57,7 @@ export function ModelCard({
 }) {
   const version = modelVersion(model);
   const dims =
-    size === "small"
-      ? "w-[72px] h-[72px]"
-      : size === "pool"
-        ? "w-[84px] h-[84px]"
-        : "w-[76px] h-[76px]";
+    size === "small" ? "w-[72px] h-[72px]" : "w-[84px] h-[84px]";
   const coloredSvg = useColoredLogo(model.providerId);
 
   return (
