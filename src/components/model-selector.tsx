@@ -19,10 +19,12 @@ export function ModelSelector({
   models,
   onStart,
   initialSelected,
+  onChange,
 }: {
   models: Model[];
   onStart: (selected: Model[]) => void;
   initialSelected?: Model[];
+  onChange?: (selected: Model[]) => void;
 }) {
   const [search, setSearch] = useState("");
   const [labFilter, setLabFilter] = useState<string>("all");
@@ -103,6 +105,13 @@ export function ModelSelector({
     () => models.filter((m) => selectedIds.has(m.id)),
     [models, selectedIds],
   );
+
+  // report live selection so the parent can use current picks for actions
+  // outside this component (e.g. CONTINUE BOARD merging). Parent must not
+  // setState synchronously in onChange — a ref write is enough.
+  useEffect(() => {
+    onChange?.(selectedModels);
+  }, [selectedModels, onChange]);
 
   const selectAllFiltered = () => {
     setSelectedIds((prev) => {

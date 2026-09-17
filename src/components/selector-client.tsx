@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ModelSelector } from "@/components/model-selector";
 import { deleteHistory, type HistoryEntry, loadHistory } from "@/lib/history";
@@ -11,6 +11,12 @@ export function SelectorClient({ models }: { models: Model[] }) {
   const router = useRouter();
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [boardSelectionIds, setBoardSelectionIds] = useState<string[] | null>(null);
+  // live picks from ModelSelector (ref, not state — avoids render loops).
+  // Used by CONTINUE so selector changes aren't silently dropped.
+  const liveSelectionRef = useRef<Model[] | null>(null);
+  const handleSelectionLive = useCallback((m: Model[]) => {
+    liveSelectionRef.current = m;
+  }, []);
 
   useEffect(() => {
     setHistory(loadHistory());
@@ -49,6 +55,18 @@ export function SelectorClient({ models }: { models: Model[] }) {
   };
 
   const handleContinue = () => {
+    // merge any selector changes made on this page first — otherwise newly
+    // picked models are silently dropped and the board looks not updated.
+    // Same merge as START, so tiers are preserved either way.
+    const live = liveSelectionRef.current ?? initialSelected;
+    if (live.length >= 2) {
+      const ids = live.map((m) => m.id);
+      const existing = loadBoard();
+      if (existing) {
+        saveBoard(mergeSelectionIntoBoard(existing, ids));
+        refreshHistory();
+      }
+    }
     router.push("/board");
   };
 
@@ -103,7 +121,7 @@ export function SelectorClient({ models }: { models: Model[] }) {
           </div>
         </div>
       )}
-      <ModelSelector models={models} initialSelected={initialSelected} onStart={handleStart} />
+      <ModelSelector models={models} initialSelected={initialSelected} onStart={handleStart} onChange={handleSelectionLive} />
       {history.length > 0 && (
         <div className="w-full max-w-[1100px] mx-auto px-4 pb-6">
           <div className="border border-zinc-800 bg-[#1a1a1a] p-3">
